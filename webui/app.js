@@ -64,6 +64,8 @@
     historyCount: 0,
     historyFilter: "",
     historyShown: HISTORY_PAGE,
+    chartItems: [],
+    chartIndex: -1,
     gate: "",
     polling: false,
     pollTimer: 0,
@@ -1222,6 +1224,7 @@
     row.type = "button";
     row.setAttribute("role", "radio");
     row.setAttribute("aria-checked", String(checked));
+    row.tabIndex = checked ? 0 : -1;
     var text = el("span");
     if (!server) {
       text.append(el("span", "row-main", t("servers.auto")));
@@ -1365,6 +1368,7 @@
     state.pinned = result;
     showView("test");
     renderTest();
+    $("status-title").focus();
   }
 
   function miniTrace(result) {
@@ -1395,10 +1399,27 @@
     return svg;
   }
 
+  function announceChartSelection() {
+    var hits = $("h-skyline").querySelectorAll(".sk-hit");
+    for (var i = 0; i < hits.length; i += 1) {
+      hits[i].classList.toggle("sk-selected", i === state.chartIndex);
+    }
+    var result = state.chartItems[state.chartIndex];
+    $("h-chart-selection").textContent = result
+      ? fmtDate(result.ts) +
+        " · ↓ " +
+        fmtSpeedUnit(speedOf(result, "download")) +
+        " · ↑ " +
+        fmtSpeedUnit(speedOf(result, "upload"))
+      : "";
+  }
+
   function drawSkyline(items) {
     var svg = $("h-skyline");
     svg.textContent = "";
     var ordered = items.slice().reverse();
+    state.chartItems = ordered;
+    state.chartIndex = ordered.length - 1;
     var peak = 1;
     ordered.forEach(function (result) {
       peak = Math.max(peak, speedOf(result, "download") || 0, speedOf(result, "upload") || 0);
@@ -1420,6 +1441,7 @@
         " · ↑ " +
         fmtSpeedUnit(speedOf(result, "upload"));
       hit.append(title);
+      hit.classList.toggle("sk-selected", index === state.chartIndex);
       hit.addEventListener("click", function () {
         pinResult(result);
       });
@@ -1441,6 +1463,7 @@
         svg.append(bar);
       });
     });
+    announceChartSelection();
     $("h-chart-note").textContent = t("hist.chart") + " 0–" + fmtInt(yMax) + " " + t("unit.speed") + ".";
   }
 
@@ -1766,28 +1789,65 @@
     box.textContent = "";
     options.forEach(function (option) {
       var button = el("button", "", option.label);
+      var selected = String(option.value) === String(current);
       button.type = "button";
       button.setAttribute("role", "radio");
-      button.setAttribute("aria-checked", String(option.value === current));
+      button.setAttribute("aria-checked", String(selected));
+      button.tabIndex = selected ? 0 : -1;
+      button.dataset.value = String(option.value);
       button.addEventListener("click", function () {
         onPick(option.value);
+      });
+      button.addEventListener("keydown", function (event) {
+        var step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+        if (!step || !options.length) {
+          return;
+        }
+        event.preventDefault();
+        var index = options.findIndex(function (item) {
+          return String(item.value) === button.dataset.value;
+        });
+        var next = options[(index + step + options.length) % options.length];
+        var nextButton = box.querySelector('[data-value="' + next.value + '"]');
+        if (nextButton) {
+          nextButton.focus();
+        }
+        onPick(next.value);
       });
       box.append(button);
     });
   }
 
   function saveSetting(patch) {
+    var focused = document.activeElement;
+    var group = focused && focused.closest ? focused.closest(".seg[role='radiogroup']") : null;
+    var groupId = group && group.id;
+    var focusedValue = focused && focused.dataset && focused.dataset.value;
+    var restoreFocus = function () {
+      if (!groupId || focusedValue === undefined) {
+        return;
+      }
+      var buttons = $(groupId).querySelectorAll("button[role='radio']");
+      for (var i = 0; i < buttons.length; i += 1) {
+        if (buttons[i].dataset.value === focusedValue) {
+          buttons[i].focus();
+          break;
+        }
+      }
+    };
     api("POST", "/settings", patch).then(
       function (settings) {
         state.settings = settings;
         flash(t("set.saved"));
         buildSettings();
         renderTest();
+        restoreFocus();
       },
       function () {
         if (!state.gate) {
           flash(t("set.failed"));
           buildSettings();
+          restoreFocus();
         }
       }
     );
@@ -1950,6 +2010,22 @@
       }
     });
 
+    $("servers-list").addEventListener("keydown", function (event) {
+      var step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+      if (!step) {
+        return;
+      }
+      var radios = $("servers-list").querySelectorAll("button[role='radio']");
+      if (!radios.length) {
+        return;
+      }
+      event.preventDefault();
+      var index = Array.prototype.indexOf.call(radios, event.target);
+      var next = radios[(Math.max(index, 0) + step + radios.length) % radios.length];
+      next.focus();
+      next.click();
+    });
+
     $("server-change").addEventListener("click", openServers);
     var searchTimer = 0;
     $("servers-q").addEventListener("input", function (event) {
@@ -2001,6 +2077,20 @@
       state.historyFilter = event.target.value;
       state.historyShown = HISTORY_PAGE;
       renderHistory();
+    });
+    $("h-skyline").addEventListener("keydown", function (event) {
+      if (!state.chartItems.length) {
+        return;
+      }
+      var step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
+      if (step) {
+        event.preventDefault();
+        state.chartIndex = Math.max(0, Math.min(state.chartItems.length - 1, state.chartIndex + step));
+        announceChartSelection();
+      } else if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        pinResult(state.chartItems[state.chartIndex]);
+      }
     });
     $("h-export").addEventListener("click", exportCsv);
     $("h-clear").addEventListener("click", clearHistory);

@@ -11,11 +11,16 @@
 !/webui/
 !/tests/
 !/packaging/
+!/tools/
 
-# Dentro de esas carpetas, lo que tampoco debe subir
+# Herramientas locales, excepto el generador de paquetes que sí se versiona.
+# Dentro de las carpetas versionadas, lo que tampoco debe subir
 *.md
 # Excepción: el README de la raíz. Va después de *.md porque gana la última regla.
 !/README.md
+# Solo se versiona el generador de paquetes; las herramientas locales siguen fuera.
+/tools/*
+!/tools/build.py
 __pycache__/
 *.py[cod]
 /packaging/webui.bz2

@@ -17,6 +17,8 @@
 <body>
 <div class="app" id="app" data-version="__VERSION__">
 
+  <a class="skip-link" href="#main" data-i18n="nav.skip">Skip to main content</a>
+
   <header class="top">
     <div class="tile mark" aria-hidden="true">
       <svg viewBox="0 0 60 60" width="34" height="34" focusable="false">
@@ -34,7 +36,7 @@
           <button type="button" data-view="settings" data-i18n="nav.settings">Settings</button>
         </nav>
         <div class="prefs">
-          <select class="field field-compact" id="lang-top" data-i18n-attr="aria-label:lang.label"></select>
+          <select class="field field-compact" id="lang-top" name="language" autocomplete="off" data-i18n-attr="aria-label:lang.label"></select>
           <button type="button" class="icon-btn" id="theme-toggle" aria-label="Theme">
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
               <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 3v14a7 7 0 0 1 0-14z"/>
@@ -46,7 +48,7 @@
     <button type="button" class="tile action" id="action" data-i18n="action.start">Start test</button>
   </header>
 
-  <main id="main">
+  <main id="main" tabindex="-1">
 
     <!-- Test: one board that fills the window. Each tile is one thing. -->
     <section class="board board-test" id="view-test" aria-labelledby="status-title">
@@ -67,7 +69,7 @@
       <div class="tile t-status" id="tile-status">
         <span class="progress" id="progress" aria-hidden="true"></span>
         <div class="tile-body">
-          <h2 class="statement" id="status-title">NASpeed</h2>
+          <h2 class="statement" id="status-title" tabindex="-1">NASpeed</h2>
           <p class="note" id="status-sub"></p>
         </div>
       </div>
@@ -135,13 +137,14 @@
         <h2 class="statement" id="h-count"></h2>
         <p class="note" id="h-limit"></p>
         <div class="h-actions">
-          <select class="field" id="h-filter" data-i18n-attr="aria-label:hist.col.provider"></select>
+          <select class="field" id="h-filter" name="history-provider" autocomplete="off" data-i18n-attr="aria-label:hist.col.provider"></select>
           <button type="button" class="btn" id="h-export" data-i18n="hist.export">Export CSV</button>
           <button type="button" class="btn btn-danger" id="h-clear" data-i18n="hist.clear">Delete all</button>
         </div>
       </div>
       <div class="tile h-chart">
-        <svg class="skyline" id="h-skyline" viewBox="0 0 1000 100" preserveAspectRatio="none" role="img" data-i18n-attr="aria-label:hist.chart"></svg>
+        <svg class="skyline" id="h-skyline" viewBox="0 0 1000 100" preserveAspectRatio="none" role="group" tabindex="0" aria-keyshortcuts="ArrowLeft ArrowRight Enter Space" data-i18n-attr="aria-label:hist.chart.keyboard"></svg>
+        <p class="sr" id="h-chart-selection" role="status" aria-live="polite"></p>
         <p class="note" id="h-chart-note"></p>
       </div>
       <div class="tile h-table">
@@ -194,7 +197,7 @@
       <div class="tile s-tile">
         <h2 class="statement" data-i18n="set.limit">Results to keep</h2>
         <p class="note" id="set-limit-help"></p>
-        <input class="field field-number" id="set-limit" type="number" inputmode="numeric" min="10" max="1000" step="10" data-i18n-attr="aria-label:set.limit">
+        <input class="field field-number" id="set-limit" name="history-limit" type="number" inputmode="numeric" autocomplete="off" min="10" max="1000" step="10" data-i18n-attr="aria-label:set.limit">
       </div>
       <div class="tile s-tile">
         <h2 class="statement" data-i18n="set.theme">Theme</h2>
@@ -204,7 +207,7 @@
       <div class="tile s-tile">
         <h2 class="statement" data-i18n="set.language">Language</h2>
         <p class="note" data-i18n="set.language.help"></p>
-        <select class="field" id="lang-settings" data-i18n-attr="aria-label:set.language"></select>
+        <select class="field" id="lang-settings" name="settings-language" autocomplete="off" data-i18n-attr="aria-label:set.language"></select>
       </div>
       <div class="tile s-tile s-text">
         <h2 class="statement" data-i18n="about.how.title">How NASpeed measures</h2>
@@ -236,7 +239,7 @@
       <h2 class="statement" id="dlg-servers-title" data-i18n="servers.title">Choose a server</h2>
       <button type="button" class="btn" data-close data-i18n="dialog.close">Close</button>
     </div>
-    <input class="field" id="servers-q" type="search" autocomplete="off" spellcheck="false" data-i18n-attr="placeholder:servers.search;aria-label:servers.search">
+    <input class="field" id="servers-q" name="server-search" type="search" autocomplete="off" spellcheck="false" data-i18n-attr="placeholder:servers.search;aria-label:servers.search">
     <div class="rows" id="servers-list" role="radiogroup" aria-labelledby="dlg-servers-title"></div>
   </dialog>
 

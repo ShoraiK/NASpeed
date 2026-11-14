@@ -1,0 +1,17 @@
+#!/bin/bash
+# SPDX-FileCopyrightText: 2026 NASpeed contributors
+# SPDX-License-Identifier: GPL-3.0-only
+set -e
+
+if ! id -u naspeed >/dev/null 2>&1; then
+    echo "NASpeed service user was not created by the TOS package manager." >&2
+    exit 1
+fi
+
+chown naspeed:naspeed /usr/local/naspeed/data /usr/local/naspeed/logs
+chmod 0700 /usr/local/naspeed/data /usr/local/naspeed/logs
+systemctl daemon-reload
+systemctl enable naspeed.service
+systemctl start naspeed.service
+
+exit 0

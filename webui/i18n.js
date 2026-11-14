@@ -10,6 +10,7 @@
 
   var es = {
     "nav.label": "Secciones",
+    "nav.skip": "Saltar al contenido principal",
     "nav.test": "Test",
     "nav.history": "Historial",
     "nav.settings": "Ajustes",
@@ -132,6 +133,7 @@
     "hist.median.up": "Mb/s de subida, mediana",
     "hist.median.ping": "ms de latencia, mediana",
     "hist.chart": "Cada par de barras es un test, del más antiguo al más reciente.",
+    "hist.chart.keyboard": "Gráfica del historial. Usa las flechas izquierda y derecha para elegir una medición y pulsa Intro para abrirla.",
     "hist.all": "Todos los proveedores",
     "hist.export": "Exportar CSV",
     "hist.clear": "Borrar todo",
@@ -188,6 +190,7 @@
 
   var en = {
     "nav.label": "Sections",
+    "nav.skip": "Skip to main content",
     "nav.test": "Test",
     "nav.history": "History",
     "nav.settings": "Settings",
@@ -310,6 +313,7 @@
     "hist.median.up": "Mbps upload, median",
     "hist.median.ping": "ms latency, median",
     "hist.chart": "Each pair of bars is one test, oldest to newest.",
+    "hist.chart.keyboard": "History chart. Use the left and right arrow keys to select a result, then press Enter to open it.",
     "hist.all": "All providers",
     "hist.export": "Export CSV",
     "hist.clear": "Delete all",
@@ -366,6 +370,7 @@
 
   var fr = {
     "nav.label": "Sections",
+    "nav.skip": "Aller au contenu principal",
     "nav.test": "Test",
     "nav.history": "Historique",
     "nav.settings": "Réglages",
@@ -488,6 +493,7 @@
     "hist.median.up": "Mb/s en envoi, médiane",
     "hist.median.ping": "ms de latence, médiane",
     "hist.chart": "Chaque paire de barres est un test, du plus ancien au plus récent.",
+    "hist.chart.keyboard": "Graphique de l’historique. Utilisez les flèches gauche et droite pour choisir un résultat, puis appuyez sur Entrée pour l’ouvrir.",
     "hist.all": "Tous les fournisseurs",
     "hist.export": "Exporter en CSV",
     "hist.clear": "Tout effacer",
@@ -544,6 +550,7 @@
 
   var de = {
     "nav.label": "Bereiche",
+    "nav.skip": "Zum Hauptinhalt springen",
     "nav.test": "Test",
     "nav.history": "Verlauf",
     "nav.settings": "Einstellungen",
@@ -666,6 +673,7 @@
     "hist.median.up": "Mbit/s Upload, Median",
     "hist.median.ping": "ms Latenz, Median",
     "hist.chart": "Jedes Balkenpaar ist ein Test, vom ältesten zum neuesten.",
+    "hist.chart.keyboard": "Verlaufsdiagramm. Wählen Sie mit den Pfeiltasten links und rechts ein Ergebnis aus und drücken Sie dann die Eingabetaste, um es zu öffnen.",
     "hist.all": "Alle Anbieter",
     "hist.export": "CSV exportieren",
     "hist.clear": "Alle löschen",
@@ -722,6 +730,7 @@
 
   var pt = {
     "nav.label": "Secções",
+    "nav.skip": "Saltar para o conteúdo principal",
     "nav.test": "Teste",
     "nav.history": "Histórico",
     "nav.settings": "Definições",
@@ -844,6 +853,7 @@
     "hist.median.up": "Mb/s de upload, mediana",
     "hist.median.ping": "ms de latência, mediana",
     "hist.chart": "Cada par de barras é um teste, do mais antigo ao mais recente.",
+    "hist.chart.keyboard": "Gráfico do histórico. Use as setas esquerda e direita para escolher um resultado e prima Enter para o abrir.",
     "hist.all": "Todos os fornecedores",
     "hist.export": "Exportar CSV",
     "hist.clear": "Apagar tudo",
@@ -900,6 +910,7 @@
 
   var zh = {
     "nav.label": "栏目",
+    "nav.skip": "跳转到主要内容",
     "nav.test": "测速",
     "nav.history": "历史",
     "nav.settings": "设置",
@@ -1022,6 +1033,7 @@
     "hist.median.up": "Mbps 上传（中位数）",
     "hist.median.ping": "ms 延迟（中位数）",
     "hist.chart": "每对柱形代表一次测速，从最早到最新。",
+    "hist.chart.keyboard": "历史图表。使用左右方向键选择一项结果，然后按 Enter 打开。",
     "hist.all": "全部服务商",
     "hist.export": "导出 CSV",
     "hist.clear": "全部删除",

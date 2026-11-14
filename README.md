@@ -13,7 +13,7 @@ Measure the connection your TerraMaster NAS actually gets — not the one your b
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white">
   <img alt="Zero dependencies" src="https://img.shields.io/badge/dependencies-none-2fd08a?style=flat-square">
   <img alt="6 interface languages" src="https://img.shields.io/badge/UI%20languages-6-ffb52e?style=flat-square">
-  <img alt="Version 0.1.0 beta" src="https://img.shields.io/badge/version-0.1.0%20beta-fe7d37?style=flat-square">
+  <img alt="Version 0.1.1 beta" src="https://img.shields.io/badge/version-0.1.1%20beta-fe7d37?style=flat-square">
   <a href="LICENSE"><img alt="License: GPL-3.0-only" src="https://img.shields.io/badge/license-GPL--3.0--only-a32d2a?style=flat-square"></a>
 </p>
 
@@ -217,7 +217,8 @@ NASpeed/
 │   └── cli.py        Command-line interface
 ├── webui/            Web interface: plain HTML, CSS and JavaScript, no build tooling
 ├── tests/            Offline test suite
-├── packaging/        TOS 7 package files (planned)
+├── packaging/        TOS 7 service, lifecycle scripts and developer metadata
+├── tools/build.py    Windows-capable TOS 7 .deb builder
 ├── .github/          README screenshots (sample data)
 └── LICENSE           GNU General Public License v3.0
 ```
@@ -304,13 +305,20 @@ disable them. The browser stores only theme and language preferences in local st
 ## Versioning
 
 NASpeed uses plain numeric `MAJOR.MINOR.PATCH` versions, the format the TOS App Center compares to offer updates.
-The current version is **0.1.0**, a beta.
+The current version is **0.1.1**, a beta.
 
 - **0.x releases are betas.** Features, settings and the API may still change between them. Beta status is
   tracked separately, never as a `-beta` suffix, so every release remains a plain, comparable number.
 - **1.0.0 will be the first stable release**, once the package has been validated on real TerraMaster hardware.
 - The version is defined once, in [`src/naspeed/__init__.py`](src/naspeed/__init__.py). It appears in Settings,
   in `/api/info`, in `python3 -m naspeed --version` and in every saved result.
+- **Review the version before each commit and push of a change or batch.** Increment it when the changes
+  warrant a new application version, not automatically for every commit. Use a patch increment for compatible
+  fixes and usability or packaging improvements, and a minor increment for significant new functionality
+  during the beta. Documentation-only changes, tests and internal refactors without observable changes
+  normally do not require an increment.
+- When incrementing the version, update the source and this README together, verify that generated package
+  metadata and the executable report the same version, and explain the increment in the commit message.
 
 ## Development notes
 

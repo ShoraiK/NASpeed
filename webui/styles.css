@@ -191,6 +191,22 @@ main {
   min-height: 0;
 }
 
+.skip-link {
+  position: fixed;
+  top: var(--gap);
+  left: var(--gap);
+  z-index: 20;
+  padding: 10px 14px;
+  border-radius: var(--r);
+  background: var(--ink);
+  color: var(--paper);
+  transform: translateY(calc(-100% - var(--gap)));
+}
+
+.skip-link:focus-visible {
+  transform: none;
+}
+
 .tile {
   position: relative;
   min-width: 0;
@@ -829,6 +845,10 @@ main {
 }
 
 .sk-hit:hover {
+  fill: var(--tile-3);
+}
+
+.sk-hit.sk-selected {
   fill: var(--tile-3);
 }
 

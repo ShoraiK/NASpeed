@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 NASpeed contributors
+# SPDX-License-Identifier: GPL-3.0-only
+[Unit]
+Description=NASpeed multi-provider network speed test
+After=network-online.target
+Wants=network-online.target
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+[Service]
+Type=simple
+User=naspeed
+Group=naspeed
+WorkingDirectory=/usr/local/naspeed
+ExecStart=/usr/local/naspeed/bin/naspeed
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ReadWritePaths=/usr/local/naspeed/data /usr/local/naspeed/logs /var/api
+TimeoutStartSec=30
+TimeoutStopSec=10
+LimitNOFILE=1024
+LimitNPROC=128
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=NASPEED_LOG_LEVEL=INFO
+
+[Install]
+WantedBy=multi-user.target
