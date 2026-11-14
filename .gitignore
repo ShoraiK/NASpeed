@@ -1,0 +1,34 @@
+# Se sube el código de la aplicación y sus pruebas: src/, webui/, tests/ y
+# packaging/, más el README y la licencia de la raíz, y las capturas del README
+# (.github/screenshots/). Todo lo demás se queda en local: documentación,
+# herramientas, datos de desarrollo y archivos generados.
+/*
+!/.gitignore
+!/.gitattributes
+!/LICENSE
+!/.github/
+!/src/
+!/webui/
+!/tests/
+!/packaging/
+
+# Dentro de esas carpetas, lo que tampoco debe subir
+*.md
+# Excepción: el README de la raíz. Va después de *.md porque gana la última regla.
+!/README.md
+__pycache__/
+*.py[cod]
+/packaging/webui.bz2
+*.deb
+.env
+.env.*
+*.pem
+*.key
+*.log
+*.tmp
+*.tmp-*
+*.corrupt
+*.swp
+Thumbs.db
+Desktop.ini
+.DS_Store

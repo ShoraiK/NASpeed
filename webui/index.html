@@ -1,0 +1,281 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: 2026 NASpeed contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>NASpeed</title>
+<link rel="icon" href="./favicon.svg?v=__VERSION__" type="image/svg+xml">
+<link rel="stylesheet" href="./styles.css?v=__VERSION__">
+<script src="./prefs.js?v=__VERSION__"></script>
+<script src="./i18n.js?v=__VERSION__" defer></script>
+<script src="./app.js?v=__VERSION__" defer></script>
+</head>
+<body>
+<div class="app" id="app" data-version="__VERSION__">
+
+  <header class="top">
+    <div class="tile mark" aria-hidden="true">
+      <svg viewBox="0 0 60 60" width="34" height="34" focusable="false">
+        <rect class="mark-led-a" x="12" y="10" width="13" height="7" rx="1.5"/>
+        <rect class="mark-led-b" x="35" y="10" width="13" height="7" rx="1.5"/>
+        <path class="mark-port" d="M10 23h40v17h-9v9H19v-9h-9z"/>
+      </svg>
+    </div>
+    <div class="tile nav">
+      <h1 class="wordmark">NASpeed</h1>
+      <div class="nav-right">
+        <nav class="links" id="nav" data-i18n-attr="aria-label:nav.label">
+          <button type="button" data-view="test" data-i18n="nav.test" aria-current="page">Test</button>
+          <button type="button" data-view="history" data-i18n="nav.history">History</button>
+          <button type="button" data-view="settings" data-i18n="nav.settings">Settings</button>
+        </nav>
+        <div class="prefs">
+          <select class="field field-compact" id="lang-top" data-i18n-attr="aria-label:lang.label"></select>
+          <button type="button" class="icon-btn" id="theme-toggle" aria-label="Theme">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+              <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 3v14a7 7 0 0 1 0-14z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+    <button type="button" class="tile action" id="action" data-i18n="action.start">Start test</button>
+  </header>
+
+  <main id="main">
+
+    <!-- Test: one board that fills the window. Each tile is one thing. -->
+    <section class="board board-test" id="view-test" aria-labelledby="status-title">
+
+      <article class="tile t-figure t-down" id="tile-down" data-lit="false">
+        <div class="tile-body">
+          <p class="intro intro-word" data-i18n="hist.col.down">Download</p>
+          <p class="intro" data-i18n="down.intro">What the NAS can receive from the internet.</p>
+          <p class="figure" id="down-value">0</p>
+          <p class="caption" data-i18n="down.caption">Mbps download</p>
+          <p class="facts" id="down-facts"></p>
+        </div>
+        <svg class="trace" id="down-trace" viewBox="0 0 1000 100" preserveAspectRatio="none" role="img" data-i18n-attr="aria-label:trace.down">
+          <path class="tr-warm" d=""/><path class="tr-main" d=""/>
+        </svg>
+      </article>
+
+      <div class="tile t-status" id="tile-status">
+        <span class="progress" id="progress" aria-hidden="true"></span>
+        <div class="tile-body">
+          <h2 class="statement" id="status-title">NASpeed</h2>
+          <p class="note" id="status-sub"></p>
+        </div>
+      </div>
+
+      <article class="tile t-figure t-up" id="tile-up" data-lit="false">
+        <div class="tile-body">
+          <p class="intro intro-word" data-i18n="hist.col.up">Upload</p>
+          <p class="intro" data-i18n="up.intro">What the NAS can send to the internet.</p>
+          <p class="figure" id="up-value">0</p>
+          <p class="caption" data-i18n="up.caption">Mbps upload</p>
+          <p class="facts" id="up-facts"></p>
+        </div>
+        <svg class="trace" id="up-trace" viewBox="0 0 1000 100" preserveAspectRatio="none" role="img" data-i18n-attr="aria-label:trace.up">
+          <path class="tr-warm" d=""/><path class="tr-main" d=""/>
+        </svg>
+      </article>
+
+      <article class="tile t-figure t-ping" id="tile-ping" data-lit="false">
+        <div class="tile-body">
+          <p class="intro intro-word" data-i18n="hist.col.ping">Latency</p>
+          <p class="intro" data-i18n="ping.intro">How long the server takes to answer.</p>
+          <p class="figure" id="ping-value">0</p>
+          <p class="caption" data-i18n="ping.caption">ms latency</p>
+          <p class="facts" id="ping-facts"></p>
+        </div>
+        <svg class="trace" id="ping-bars" viewBox="0 0 120 100" preserveAspectRatio="none" role="img" data-i18n-attr="aria-label:trace.ping"></svg>
+      </article>
+
+      <div class="t-prov" id="providers" role="radiogroup" data-i18n-attr="aria-label:prov.label"></div>
+
+      <div class="tile t-server" id="tile-server">
+        <div class="tile-body">
+          <p class="statement" id="server-name"></p>
+          <p class="note" id="server-sub"></p>
+        </div>
+        <button type="button" class="btn" id="server-change" data-i18n="server.change">Change</button>
+      </div>
+
+      <div class="tile t-route" id="tile-route">
+        <dl class="pairs" id="route-list"></dl>
+      </div>
+    </section>
+
+    <!-- History -->
+    <section class="board board-history" id="view-history" hidden aria-labelledby="h-count">
+      <article class="tile t-figure t-down h-fig" id="h-down" data-lit="true">
+        <div class="tile-body">
+          <p class="figure" id="h-down-value">0</p>
+          <p class="caption" data-i18n="hist.median.down">Mbps download, median</p>
+        </div>
+      </article>
+      <article class="tile t-figure t-up h-fig" id="h-up" data-lit="true">
+        <div class="tile-body">
+          <p class="figure" id="h-up-value">0</p>
+          <p class="caption" data-i18n="hist.median.up">Mbps upload, median</p>
+        </div>
+      </article>
+      <article class="tile t-figure t-ping h-fig" id="h-ping" data-lit="true">
+        <div class="tile-body">
+          <p class="figure" id="h-ping-value">0</p>
+          <p class="caption" data-i18n="hist.median.ping">ms latency, median</p>
+        </div>
+      </article>
+      <div class="tile h-head">
+        <h2 class="statement" id="h-count"></h2>
+        <p class="note" id="h-limit"></p>
+        <div class="h-actions">
+          <select class="field" id="h-filter" data-i18n-attr="aria-label:hist.col.provider"></select>
+          <button type="button" class="btn" id="h-export" data-i18n="hist.export">Export CSV</button>
+          <button type="button" class="btn btn-danger" id="h-clear" data-i18n="hist.clear">Delete all</button>
+        </div>
+      </div>
+      <div class="tile h-chart">
+        <svg class="skyline" id="h-skyline" viewBox="0 0 1000 100" preserveAspectRatio="none" role="img" data-i18n-attr="aria-label:hist.chart"></svg>
+        <p class="note" id="h-chart-note"></p>
+      </div>
+      <div class="tile h-table">
+        <table>
+          <caption data-i18n="hist.byprovider">Median by provider</caption>
+          <thead>
+            <tr>
+              <th scope="col" data-i18n="hist.col.provider">Provider</th>
+              <th scope="col" class="num" data-i18n="hist.col.tests">Tests</th>
+              <th scope="col" class="num" data-i18n="hist.col.down">Download</th>
+              <th scope="col" class="num" data-i18n="hist.col.up">Upload</th>
+              <th scope="col" class="num" data-i18n="hist.col.ping">Latency</th>
+            </tr>
+          </thead>
+          <tbody id="h-table-body"></tbody>
+        </table>
+      </div>
+      <div class="h-list" id="h-list"></div>
+      <button type="button" class="tile h-more" id="h-more" data-i18n="hist.more" hidden>Show more</button>
+      <div class="tile h-empty" id="h-empty" hidden>
+        <p class="statement" id="h-empty-title"></p>
+        <p class="note" id="h-empty-sub"></p>
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section class="board board-settings" id="view-settings" hidden aria-label="Settings" data-i18n-attr="aria-label:nav.settings">
+      <div class="tile s-tile">
+        <h2 class="statement" data-i18n="set.duration">Measurement length</h2>
+        <p class="note" data-i18n="set.duration.help"></p>
+        <div class="seg" id="set-duration" role="radiogroup" data-i18n-attr="aria-label:set.duration"></div>
+      </div>
+      <div class="tile s-tile">
+        <h2 class="statement" data-i18n="set.connections">Parallel connections</h2>
+        <p class="note" data-i18n="set.connections.help"></p>
+        <div class="seg" id="set-connections" role="radiogroup" data-i18n-attr="aria-label:set.connections"></div>
+      </div>
+      <div class="tile s-tile">
+        <h2 class="statement" data-i18n="set.ip">IP version</h2>
+        <p class="note" data-i18n="set.ip.help"></p>
+        <div class="seg" id="set-ip" role="radiogroup" data-i18n-attr="aria-label:set.ip"></div>
+      </div>
+      <div class="tile s-tile">
+        <h2 class="statement" data-i18n="set.history">Save history</h2>
+        <p class="note" data-i18n="set.history.help"></p>
+        <button type="button" class="switch" id="set-history" role="switch" aria-checked="true" data-i18n-attr="aria-label:set.history">
+          <span class="switch-knob" aria-hidden="true"></span>
+        </button>
+      </div>
+      <div class="tile s-tile">
+        <h2 class="statement" data-i18n="set.limit">Results to keep</h2>
+        <p class="note" id="set-limit-help"></p>
+        <input class="field field-number" id="set-limit" type="number" inputmode="numeric" min="10" max="1000" step="10" data-i18n-attr="aria-label:set.limit">
+      </div>
+      <div class="tile s-tile">
+        <h2 class="statement" data-i18n="set.theme">Theme</h2>
+        <p class="note" data-i18n="set.theme.help"></p>
+        <div class="seg" id="set-theme" role="radiogroup" data-i18n-attr="aria-label:set.theme"></div>
+      </div>
+      <div class="tile s-tile">
+        <h2 class="statement" data-i18n="set.language">Language</h2>
+        <p class="note" data-i18n="set.language.help"></p>
+        <select class="field" id="lang-settings" data-i18n-attr="aria-label:set.language"></select>
+      </div>
+      <div class="tile s-tile s-text">
+        <h2 class="statement" data-i18n="about.how.title">How NASpeed measures</h2>
+        <p data-i18n="about.how.body"></p>
+      </div>
+      <div class="tile s-tile s-text">
+        <h2 class="statement" data-i18n="about.data.title">Data and privacy</h2>
+        <p data-i18n="about.data.body"></p>
+      </div>
+      <div class="tile s-tile s-text s-wide">
+        <h2 class="statement" data-i18n="about.providers.title">Providers</h2>
+        <p data-i18n="about.ookla"></p>
+        <p data-i18n="about.mlab"></p>
+        <p class="s-links" id="about-links"></p>
+      </div>
+      <div class="tile s-tile s-version">
+        <p class="statement" id="about-version">NASpeed</p>
+        <p class="note" id="about-mode"></p>
+        <p class="note">Copyright 2026 NASpeed contributors</p>
+        <p class="note" id="about-license"></p>
+        <p class="note" id="set-status" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Server picker -->
+  <dialog class="dlg" id="dlg-servers" aria-labelledby="dlg-servers-title">
+    <div class="dlg-head">
+      <h2 class="statement" id="dlg-servers-title" data-i18n="servers.title">Choose a server</h2>
+      <button type="button" class="btn" data-close data-i18n="dialog.close">Close</button>
+    </div>
+    <input class="field" id="servers-q" type="search" autocomplete="off" spellcheck="false" data-i18n-attr="placeholder:servers.search;aria-label:servers.search">
+    <div class="rows" id="servers-list" role="radiogroup" aria-labelledby="dlg-servers-title"></div>
+  </dialog>
+
+  <!-- Provider notice (M-Lab publishes results as open data) -->
+  <dialog class="dlg dlg-narrow" id="dlg-notice" aria-labelledby="dlg-notice-title">
+    <div class="dlg-body">
+      <h2 class="statement" id="dlg-notice-title"></h2>
+      <p id="dlg-notice-body"></p>
+      <p><a id="dlg-notice-link" target="_blank" rel="noopener noreferrer" data-i18n="notice.link">Read the privacy policy</a></p>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn" data-close data-i18n="dialog.cancel">Cancel</button>
+      <button type="button" class="btn btn-ink" id="dlg-notice-ok" data-i18n="notice.accept">Accept and start</button>
+    </div>
+  </dialog>
+
+  <!-- Confirmation -->
+  <dialog class="dlg dlg-narrow" id="dlg-confirm" aria-labelledby="dlg-confirm-title">
+    <div class="dlg-body">
+      <h2 class="statement" id="dlg-confirm-title"></h2>
+      <p id="dlg-confirm-body"></p>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn" data-close data-i18n="dialog.cancel">Cancel</button>
+      <button type="button" class="btn btn-alert" id="dlg-confirm-ok"></button>
+    </div>
+  </dialog>
+
+  <!-- Shown instead of the application: no permission, session expired or service down -->
+  <div class="gate" id="gate" hidden role="alert">
+    <div class="tile gate-tile">
+      <p class="statement" id="gate-title"></p>
+      <p id="gate-body"></p>
+      <button type="button" class="btn btn-ink" id="gate-action" hidden></button>
+    </div>
+  </div>
+
+  <p class="sr" id="announce" role="status" aria-live="polite"></p>
+</div>
+<noscript><p style="padding:24px;font-family:sans-serif">NASpeed needs JavaScript to run.</p></noscript>
+</body>
+</html>

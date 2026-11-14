@@ -1,0 +1,9 @@
+# La guía de TOS 7 exige finales de línea LF en todo lo que va al paquete.
+# Sin esto, git en Windows puede devolver los archivos con CRLF.
+* text=auto eol=lf
+
+*.bz2 binary
+*.deb binary
+*.png binary
+*.ico binary
+*.woff2 binary
