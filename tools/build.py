@@ -464,11 +464,20 @@ def build_package(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--validate-only", action="store_true",
-                        help="validate package source files without developer metadata")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--validate-only", action="store_true",
+                      help="validate package source files without developer metadata")
+    mode.add_argument("--release-info", action="store_true",
+                      help="print the version and beta flag as key=value lines, "
+                           "ready to append to $GITHUB_OUTPUT")
     parser.add_argument("--output-dir", type=pathlib.Path, default=ROOT / "dist")
     args = parser.parse_args(argv)
     try:
+        if args.release_info:
+            version, beta = _read_version(ROOT)
+            print("version=%s" % version)
+            print("beta=%s" % ("true" if beta else "false"))
+            return 0
         version, beta, _icon = _validate_package_sources(ROOT)
         if args.validate_only:
             print("NASpeed %s (%s): package sources validated." %

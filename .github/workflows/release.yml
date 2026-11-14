@@ -1,0 +1,180 @@
+# Publishes a GitHub Release with the TOS 7 .deb whenever a push to main brings a
+# version that has no release yet. The version lives only in
+# src/naspeed/__init__.py, where BETA decides whether the release is marked as a
+# pre-release. Run the workflow by hand to publish the version already on main,
+# or tick "dry_run" to build and check the package without publishing anything.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [src/naspeed/__init__.py]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only build and check the package: keep it as a workflow artifact and publish nothing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  DEB: naspeed_x86_64.deb
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  plan:
+    name: Check the version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      release: ${{ steps.gate.outputs.release }}
+      version: ${{ steps.info.outputs.version }}
+      beta: ${{ steps.info.outputs.beta }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Every tag is needed to know which versions are already released.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Read the version
+        id: info
+        run: python3 tools/build.py --release-info | tee -a "$GITHUB_OUTPUT"
+
+      - name: Decide whether this version needs a release
+        id: gate
+        env:
+          VERSION: ${{ steps.info.outputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          tag="v$VERSION"
+          if git rev-parse --quiet --verify "refs/tags/$tag" > /dev/null; then
+            message="Tag $tag already exists, so NASpeed $VERSION counts as released. Raise the version in src/naspeed/__init__.py to publish a new release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Nothing to release::$message"
+            echo "$message" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$DRY_RUN" != true ] && [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::Releases are published from main only. Run this workflow on main, or tick dry_run to just build."
+            exit 1
+          fi
+          echo "release=true" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build and publish the .deb
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      BETA: ${{ needs.plan.outputs.beta }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The whole history: the release notes list the commits since the previous
+          # release, and build.py rejects a version that does not exceed the last tag.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # TOS 7 ships Python 3.10, the minimum the code supports.
+      - name: Set up Python 3.10
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.10"
+
+      - name: Run the tests
+        run: python -m unittest discover -s tests
+
+      - name: Build the package
+        run: python tools/build.py
+
+      - name: Check the package with dpkg
+        run: |
+          check() {
+            if [ "$2" != "$3" ]; then
+              echo "::error::$1 in the package is '$2', expected '$3'."
+              exit 1
+            fi
+          }
+          dpkg-deb --info "dist/$DEB"
+          dpkg-deb --contents "dist/$DEB"
+          check Package "$(dpkg-deb --field "dist/$DEB" Package)" naspeed
+          check Version "$(dpkg-deb --field "dist/$DEB" Version)" "$VERSION"
+          check Architecture "$(dpkg-deb --field "dist/$DEB" Architecture)" amd64
+
+      - name: Write the checksum and the release notes
+        run: |
+          (cd dist && sha256sum "$DEB" > "$DEB.sha256")
+          previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD 2> /dev/null || true)
+          {
+            echo "Multi-provider speed test for TerraMaster TOS 7 (x86_64)."
+            if [ "$BETA" = true ]; then
+              echo
+              echo "> **Beta.** Features, settings and the API may still change between beta releases."
+            fi
+            echo
+            echo "Verify the download with \`sha256sum -c $DEB.sha256\`."
+            if [ -n "$previous" ]; then
+              printf '\n### Changes since %s\n\n' "$previous"
+              git log --no-merges --format='- %s (%h)' "$previous..HEAD"
+              printf '\n**Full changelog:** %s/%s/compare/%s...v%s\n' \
+                "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$previous" "$VERSION"
+            else
+              printf '\n### Changes\n\n'
+              git log --no-merges --format='- %s (%h)'
+            fi
+          } > "$RUNNER_TEMP/release-notes.md"
+          cat "$RUNNER_TEMP/release-notes.md"
+
+      - name: Publish the release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [ "$BETA" = true ]; then
+            kind=--prerelease
+            title="NASpeed $VERSION (beta)"
+          else
+            kind=--latest
+            title="NASpeed $VERSION"
+          fi
+          url=$(gh release create "v$VERSION" "dist/$DEB" "dist/$DEB.sha256" \
+            --target "$GITHUB_SHA" \
+            --title "$title" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            "$kind")
+          echo "Published $url"
+          echo "Published [$title]($url)." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the package as a workflow artifact
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: naspeed-${{ env.VERSION }}
+          path: |
+            dist/${{ env.DEB }}
+            dist/${{ env.DEB }}.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Summarize the dry run
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "Dry run: NASpeed $VERSION was built and checked, and nothing was published. The package is in this run's artifacts." >> "$GITHUB_STEP_SUMMARY"

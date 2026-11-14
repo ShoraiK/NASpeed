@@ -4,7 +4,7 @@
 
 # NASpeed
 
-### The internet speed test that runs *on your NAS*
+### The internet speed test that runs *on your TerraMaster NAS*
 
 Measure the connection your TerraMaster NAS actually gets — not the one your browser sees.
 
@@ -13,7 +13,7 @@ Measure the connection your TerraMaster NAS actually gets — not the one your b
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white">
   <img alt="Zero dependencies" src="https://img.shields.io/badge/dependencies-none-2fd08a?style=flat-square">
   <img alt="6 interface languages" src="https://img.shields.io/badge/UI%20languages-6-ffb52e?style=flat-square">
-  <img alt="Version 0.1.1 beta" src="https://img.shields.io/badge/version-0.1.1%20beta-fe7d37?style=flat-square">
+  <img alt="Version 0.2.0 beta" src="https://img.shields.io/badge/version-0.2.0%20beta-fe7d37?style=flat-square">
   <a href="LICENSE"><img alt="License: GPL-3.0-only" src="https://img.shields.io/badge/license-GPL--3.0--only-a32d2a?style=flat-square"></a>
 </p>
 
@@ -38,9 +38,10 @@ Measure the connection your TerraMaster NAS actually gets — not the one your b
 </div>
 
 > [!IMPORTANT]
-> **Beta.** The backend and the web interface are complete and run today from source. The installable
-> TOS 7 package and validation on real TerraMaster hardware are still in progress, so there is nothing to
-> download yet — see the [roadmap](#roadmap).
+> **Beta.** The backend and the web interface are complete, and the first installable TOS 7 package is
+> available on the [Releases page](https://github.com/ShoraiK/NASpeed/releases). It has not been validated on
+> real TerraMaster hardware yet, so expect rough edges — see how to [install it](#install-on-tos-7-beta) and
+> the [roadmap](#roadmap).
 
 ## Why NASpeed?
 
@@ -154,7 +155,18 @@ M-Lab is the exception to the shared method: NDT7 uses a single connection for a
 
 ## Getting started
 
-NASpeed is not packaged for TOS yet, but the whole application — service and web UI — already runs from source on any machine with **Python 3.10 or newer**. There is nothing to install.
+NASpeed is distributed as a TOS 7 package. The whole application — service and web UI — also runs from source on any machine with **Python 3.10 or newer**, with no dependencies to install.
+
+### Install on TOS 7 (beta)
+
+NASpeed is not in the TerraMaster App Center yet. Download `naspeed_x86_64.deb` and `naspeed_x86_64.deb.sha256` from the [Releases page](https://github.com/ShoraiK/NASpeed/releases) to the NAS and, from an SSH session in that folder, run:
+
+```bash
+sha256sum -c naspeed_x86_64.deb.sha256   # check the download
+sudo dpkg -i naspeed_x86_64.deb          # install the package
+```
+
+This is the manual installation TerraMaster documents for testing apps. The package has not been validated on real TerraMaster hardware yet.
 
 ### Run the web UI
 
@@ -219,7 +231,7 @@ NASpeed/
 ├── tests/            Offline test suite
 ├── packaging/        TOS 7 service, lifecycle scripts and developer metadata
 ├── tools/build.py    Windows-capable TOS 7 .deb builder
-├── .github/          README screenshots (sample data)
+├── .github/          Release workflow and README screenshots (sample data)
 └── LICENSE           GNU General Public License v3.0
 ```
 
@@ -233,8 +245,8 @@ NASpeed/
 
 ## Permissions, ports and files
 
-What NASpeed needs on your NAS, and every file it writes there. This describes the TOS 7 package being prepared;
-the service user and upgrade/purge behavior still need validation once that package exists. Source development
+What NASpeed needs on your NAS, and every file it writes there. This describes the TOS 7 package; the service
+user and upgrade/purge behavior still need validation on real hardware. Source development
 mode (`--dev`) instead listens on loopback port `18321`, keeps application data in `.devdata/` inside the repository
 and writes no log file. Explicit command-line options and `NASPEED_*` environment variables can override paths.
 
@@ -252,7 +264,7 @@ and writes no log file. Explicit command-line options and `NASPEED_*` environmen
 
 ### Ports
 
-The planned TOS package uses **no listening TCP port**; the platform proxy connects to the Unix socket. Provider
+The TOS package uses **no listening TCP port**; the platform proxy connects to the Unix socket. Provider
 connections below are outbound and start only when you use that provider. Hostname resolution uses the NAS's
 configured DNS resolver.
 
@@ -282,7 +294,7 @@ Latency is sampled with plain TCP connections to the same server and port.
 | `/usr/local/naspeed/logs/naspeed.log` | Service log | Text: `[time] [level] [component] message` | On start | Rotated at 512 KiB, keeping 2 old files (`.1`, `.2`): about 1.5 MiB total | Persistent, rotated |
 | `/var/api/naspeed.sock` | Socket for the TOS platform proxy | Unix socket, mode `0660` | On start | N/A | Removed on stop; a stale one is replaced on start |
 
-The planned package serves the interface archive from memory without extracting it. NASpeed creates no cache
+The TOS package serves the interface archive from memory without extracting it. NASpeed creates no cache
 or files in `/tmp`, its measurement workers write no application data, and the command line keeps its results in
 memory. The service also logs to stdout, captured by the system journal under systemd. When running Python
 directly from source, Python may create ignored `__pycache__/` directories; set `PYTHONDONTWRITEBYTECODE=1` to
@@ -297,7 +309,7 @@ disable them. The browser stores only theme and language preferences in local st
 - [x] Web interface: test, history and settings — six languages, light and dark themes
 - [x] Offline test suite
 - [x] Permission, port and runtime-file reference
-- [ ] Installable `.deb` package for TOS 7
+- [x] Installable `.deb` package for TOS 7, built and published automatically as a GitHub Release
 - [ ] Validation on real TerraMaster hardware, including Python 3.10
 - [ ] Installation guide
 - [ ] Submission to the TerraMaster App Center
@@ -305,13 +317,18 @@ disable them. The browser stores only theme and language preferences in local st
 ## Versioning
 
 NASpeed uses plain numeric `MAJOR.MINOR.PATCH` versions, the format the TOS App Center compares to offer updates.
-The current version is **0.1.1**, a beta.
+The current version is **0.2.0**, a beta.
 
 - **0.x releases are betas.** Features, settings and the API may still change between them. Beta status is
   tracked separately, never as a `-beta` suffix, so every release remains a plain, comparable number.
 - **1.0.0 will be the first stable release**, once the package has been validated on real TerraMaster hardware.
 - The version is defined once, in [`src/naspeed/__init__.py`](src/naspeed/__init__.py). It appears in Settings,
   in `/api/info`, in `python3 -m naspeed --version` and in every saved result.
+- **Releases are automated.** Pushing a raised version to `main` runs the
+  [release workflow](.github/workflows/release.yml): it runs the tests, builds the `.deb` and publishes a
+  GitHub Release tagged `vMAJOR.MINOR.PATCH` with the package and its SHA-256 checksum. The release is marked
+  as a pre-release while `BETA` is `True` in the same file and becomes a regular release once it is `False`,
+  which is planned for 1.0.0. A version that already has a tag is never released twice.
 - **Review the version before each commit and push of a change or batch.** Increment it when the changes
   warrant a new application version, not automatically for every commit. Use a patch increment for compatible
   fixes and usability or packaging improvements, and a minor increment for significant new functionality

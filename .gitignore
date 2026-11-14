@@ -1,6 +1,6 @@
 # Se sube el código de la aplicación y sus pruebas: src/, webui/, tests/ y
-# packaging/, más el README y la licencia de la raíz, y las capturas del README
-# (.github/screenshots/). Todo lo demás se queda en local: documentación,
+# packaging/, más el README y la licencia de la raíz, y .github/ (capturas del
+# README y flujo de publicación). Todo lo demás se queda en local: documentación,
 # herramientas, datos de desarrollo y archivos generados.
 /*
 !/.gitignore

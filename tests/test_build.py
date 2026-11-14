@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Offline tests for the TerraMaster .deb build pipeline."""
 
+import contextlib
 import importlib.util
 import io
 import json
@@ -11,6 +12,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -29,6 +31,14 @@ TEST_METADATA = {
     "help_url": "https://example.invalid/naspeed",
     "official_url": "",
 }
+
+
+def build_deb(output_dir):
+    # Published versions are tagged and build_package refuses a version that does
+    # not exceed the latest tag. These tests check the package contents, so they
+    # must not depend on the tags of the clone they run in.
+    with mock.patch.object(build, "_validate_version_progress"):
+        return build.build_package(ROOT, pathlib.Path(output_dir), TEST_METADATA)
 
 
 def read_ar(path):
@@ -93,7 +103,7 @@ class PackageBuildTests(unittest.TestCase):
 
     def test_package_is_a_valid_single_package_deb_with_expected_payload(self):
         with tempfile.TemporaryDirectory() as temp:
-            destination = build.build_package(ROOT, pathlib.Path(temp), TEST_METADATA)
+            destination = build_deb(temp)
             members = read_ar(destination)
             self.assertEqual(list(members), ["debian-binary", "control.tar.gz", "data.tar.gz"])
             self.assertEqual(members["debian-binary"], b"2.0\n")
@@ -130,7 +140,7 @@ class PackageBuildTests(unittest.TestCase):
 
     def test_package_archives_have_root_owned_safe_modes(self):
         with tempfile.TemporaryDirectory() as temp:
-            destination = build.build_package(ROOT, pathlib.Path(temp), TEST_METADATA)
+            destination = build_deb(temp)
             members = read_ar(destination)
             with tarfile.open(fileobj=io.BytesIO(members["data.tar.gz"]), mode="r:gz") as archive:
                 exe = archive.getmember("usr/local/naspeed/bin/naspeed")
@@ -148,6 +158,15 @@ class PackageBuildTests(unittest.TestCase):
         version, beta, icon = build._validate_package_sources(ROOT)
         self.assertEqual((version, beta), (__version__, BETA))
         self.assertEqual(icon, (ROOT / "webui" / "favicon.svg").read_bytes())
+
+    def test_release_info_prints_the_version_and_beta_flag_as_github_output(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(build.main(["--release-info"]), 0)
+        self.assertEqual(
+            output.getvalue().splitlines(),
+            ["version=%s" % __version__, "beta=%s" % str(BETA).lower()],
+        )
 
 
 if __name__ == "__main__":
