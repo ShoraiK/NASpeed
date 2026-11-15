@@ -10,21 +10,23 @@ StartLimitIntervalSec=60
 [Service]
 Type=simple
 User=naspeed
-Group=naspeed
 WorkingDirectory=/usr/local/naspeed
+ExecStartPre=+/bin/sh -c 'mkdir -p /usr/local/naspeed/data /usr/local/naspeed/logs /usr/local/naspeed/run && chown naspeed /usr/local/naspeed/data /usr/local/naspeed/logs /usr/local/naspeed/run && chmod 0750 /usr/local/naspeed/data /usr/local/naspeed/logs && chmod 0755 /usr/local/naspeed/run && { [ -d /var/api ] || mkdir -p /var/api; } && ln -sfn /usr/local/naspeed/run/naspeed.sock /var/api/naspeed.sock'
 ExecStart=/usr/local/naspeed/bin/naspeed
+ExecStopPost=+/bin/rm -f /var/api/naspeed.sock
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 PrivateDevices=true
-ReadWritePaths=/usr/local/naspeed/data /usr/local/naspeed/logs /var/api
+ReadWritePaths=-/usr/local/naspeed/data -/usr/local/naspeed/logs -/usr/local/naspeed/run
 TimeoutStartSec=30
 TimeoutStopSec=10
 LimitNOFILE=1024
 LimitNPROC=128
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=NASPEED_LOG_LEVEL=INFO
+Environment=NASPEED_SOCKET=/usr/local/naspeed/run/naspeed.sock
 
 [Install]
 WantedBy=multi-user.target

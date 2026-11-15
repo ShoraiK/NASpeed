@@ -9,8 +9,8 @@
 
   var APP_ID = "naspeed";
   var API = "/v2/proxy/" + APP_ID + "/api";
-  // The TOS web root shows the login page when there is no session.
-  var TOS_LOGIN_URL = "/";
+  // The TOS desktop and its login page. The web root only loads this address.
+  var TOS_LOGIN_URL = "/tos/";
   var POLL_MS = 110;
   var HISTORY_PAGE = 40;
   var PING_SLOTS = 12;
@@ -198,30 +198,37 @@
     return I18N.langs[code] ? code : "";
   }
 
-  /* Saved choice, then the browser, then the TOS page around us, then English. */
-  function detectLang() {
-    var saved = matchLang(prefs.get("lang"));
-    if (saved) {
-      return saved;
-    }
-    var list = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language];
-    for (var i = 0; i < list.length; i += 1) {
-      var code = matchLang(list[i]);
-      if (code) {
-        return code;
-      }
-    }
-    try {
-      if (window.parent && window.parent !== window) {
-        var outer = matchLang(window.parent.document.documentElement.lang);
-        if (outer) {
-          return outer;
+  /* The language is saved in the NAS settings. The browser keeps a copy only
+     to paint the first frame in the right language; with neither, English. */
+  function cachedLang() {
+    return matchLang(prefs.get("language")) || matchLang(prefs.get("lang")) || I18N.fallback;
+  }
+
+  /* Follow the language saved on the NAS. A choice made with a version that
+     kept it only in this browser ("lang") is moved to the NAS once. */
+  function adoptSavedLanguage() {
+    var saved = matchLang(state.settings.language);
+    var legacy = matchLang(prefs.get("lang"));
+    if (saved || !legacy) {
+      prefs.set("lang", "");
+    } else {
+      saved = legacy;
+      api("POST", "/settings", { language: legacy }).then(
+        function (settings) {
+          state.settings = settings;
+          prefs.set("lang", "");
+        },
+        function () {
+          /* Tried again the next time the app opens. */
         }
-      }
-    } catch (error) {
-      /* The parent page is on another origin: nothing to read. */
+      );
     }
-    return I18N.fallback;
+    saved = saved || I18N.fallback;
+    prefs.set("language", saved);
+    if (saved !== lang) {
+      applyLanguage(saved);
+      renderAll();
+    }
   }
 
   function applyLanguage(code) {
@@ -251,20 +258,16 @@
         }
       }
     }
-    ["lang-top", "lang-settings"].forEach(function (id) {
-      $(id).value = lang;
-    });
+    $("lang-settings").value = lang;
   }
 
-  function fillLanguageSelects() {
-    ["lang-top", "lang-settings"].forEach(function (id) {
-      var select = $(id);
-      select.textContent = "";
-      I18N.order.forEach(function (code) {
-        var option = el("option", "", I18N.langs[code].name);
-        option.value = code;
-        select.append(option);
-      });
+  function fillLanguageSelect() {
+    var select = $("lang-settings");
+    select.textContent = "";
+    I18N.order.forEach(function (code) {
+      var option = el("option", "", I18N.langs[code].name);
+      option.value = code;
+      select.append(option);
     });
   }
 
@@ -325,7 +328,10 @@
     var csrf = cookie("X-Csrf-Token");
     if (csrf) {
       headers["X-Csrf-Token"] = csrf;
-      headers.Cookie = "TMSESSNAME=" + cookie("TMSESSNAME") + "; X-Csrf-Token=" + csrf + ";";
+      var session = cookie("TMSESSNAME");
+      if (session) {
+        headers.Cookie = "TMSESSNAME=" + session + "; X-Csrf-Token=" + csrf + ";";
+      }
     }
     var options = { method: method, headers: headers, credentials: "include", cache: "no-store" };
     if (body !== undefined) {
@@ -340,7 +346,9 @@
             return null;
           })
           .then(function (data) {
-            if (response.status === 401) {
+            // Without a session the TOS proxy answers HTTP 200 with
+            // {"is_login": false, "code_num": 117} before NASpeed is reached.
+            if (response.status === 401 || (data && data.is_login === false)) {
               showGate("session");
               throw new ApiError(401, "unauthorized");
             }
@@ -807,7 +815,7 @@
     list.textContent = "";
     pairs.forEach(function (pair) {
       var group = el("div");
-      group.append(el("dt", "", pair[0]), el("dd", "", pair[1]));
+      group.append(el("dt", "", pair[0]), el("dd", String(pair[1]).length > 22 ? "long" : "", pair[1]));
       list.append(group);
     });
   }
@@ -1191,6 +1199,36 @@
         /* Not essential: the board simply opens empty. */
       }
     );
+  }
+
+  /* The window stays loaded while it is hidden or behind another. On coming
+     back, follow a test that someone else started and show the latest result. */
+  var resyncedAt = 0;
+
+  function resync() {
+    var now = Date.now();
+    if (state.gate || state.running || state.starting || !state.info || now - resyncedAt < 3000) {
+      return;
+    }
+    resyncedAt = now;
+    api("GET", "/state")
+      .then(function (live) {
+        if (live.running && live.test) {
+          state.test = live.test;
+          state.running = true;
+          startPolling();
+          return null;
+        }
+        return loadLast().then(function () {
+          renderTest();
+          if (state.view === "history") {
+            loadHistory();
+          }
+        });
+      })
+      .catch(function () {
+        /* api() already shows the gate when the session or the service is gone. */
+      });
   }
 
   /* ---- Dialogs ---------------------------------------------------------- */
@@ -1895,6 +1933,7 @@
       }
     );
     $("set-history").setAttribute("aria-checked", String(settings.save_history !== false));
+    $("set-history-state").textContent = t(settings.save_history !== false ? "value.on" : "value.off");
     var limit = $("set-limit");
     limit.max = String(options.history_max || 1000);
     limit.value = String(settings.history_limit);
@@ -1951,7 +1990,9 @@
       renderTest();
     }
     if (changed) {
+      // Inside TOS the body is what scrolls (see the stylesheet).
       window.scrollTo(0, 0);
+      document.body.scrollTop = 0;
     }
   }
 
@@ -1971,6 +2012,13 @@
       }
     });
 
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) {
+        resync();
+      }
+    });
+    window.addEventListener("focus", resync);
+
     $("theme-toggle").addEventListener("click", function () {
       setTheme(currentTheme() === "dark" ? "light" : "dark");
     });
@@ -1981,12 +2029,11 @@
       darkScheme.addEventListener("change", schemeChanged);
     }
 
-    ["lang-top", "lang-settings"].forEach(function (id) {
-      $(id).addEventListener("change", function (event) {
-        prefs.set("lang", event.target.value);
-        applyLanguage(event.target.value);
-        renderAll();
-      });
+    $("lang-settings").addEventListener("change", function (event) {
+      applyLanguage(event.target.value);
+      prefs.set("language", lang);
+      renderAll();
+      saveSetting({ language: lang });
     });
 
     // Arrow keys move between providers, as in any radio group.
@@ -2114,8 +2161,8 @@
   }
 
   function init() {
-    fillLanguageSelects();
-    applyLanguage(detectLang());
+    fillLanguageSelect();
+    applyLanguage(cachedLang());
     bind();
     renderThemeControls();
     renderTest();
@@ -2125,13 +2172,15 @@
         state.settings = info.settings || {};
         state.providers = info.providers || [];
         state.historyCount = info.history_count || 0;
-        var wanted = state.settings.default_provider;
-        state.providerId = state.providers.length ? state.providers[0].id : "";
-        state.providers.forEach(function (provider) {
-          if (provider.id === wanted) {
-            state.providerId = provider.id;
-          }
+        // The provider of the last test, else LibreSpeed, else the first one.
+        var ids = state.providers.map(function (provider) {
+          return provider.id;
         });
+        var wanted = [state.settings.default_provider, "librespeed"].filter(function (id) {
+          return ids.indexOf(id) >= 0;
+        });
+        state.providerId = wanted.length ? wanted[0] : ids[0] || "";
+        adoptSavedLanguage();
         buildProviders();
         buildSettings();
         return api("GET", "/state");

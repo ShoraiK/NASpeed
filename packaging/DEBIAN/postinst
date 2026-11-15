@@ -3,15 +3,21 @@
 # SPDX-License-Identifier: GPL-3.0-only
 set -e
 
-if ! id -u naspeed >/dev/null 2>&1; then
-    echo "NASpeed service user was not created by the TOS package manager." >&2
-    exit 1
+APP_DIR="/usr/local/naspeed"
+
+# The platform only unpacks webui.bz2 on a fresh install, so an upgrade would
+# keep serving the previous interface. Refresh it when the folder already exists
+# (on a fresh install the platform creates it, so it is left alone). "-m" stamps
+# the files with the install time: the archive mtime is 0, and nginx builds its
+# ETag from mtime and size, so same-sized files would look unchanged to caches.
+if [ -d "${APP_DIR}/webui" ] && [ -f "${APP_DIR}/webui.bz2" ]; then
+    tar -xjmf "${APP_DIR}/webui.bz2" -C "${APP_DIR}/webui" || true
 fi
 
-chown naspeed:naspeed /usr/local/naspeed/data /usr/local/naspeed/logs
-chmod 0700 /usr/local/naspeed/data /usr/local/naspeed/logs
-systemctl daemon-reload
-systemctl enable naspeed.service
-systemctl start naspeed.service
+# The service starts through the TOS platform; a failing "systemctl" must never
+# fail the installation (dpkg would roll the whole package back).
+systemctl daemon-reload || true
+systemctl enable naspeed.service || true
+systemctl start naspeed.service || true
 
 exit 0

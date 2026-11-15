@@ -6,7 +6,9 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -49,7 +51,7 @@ def read_ar(path):
     members = {}
     while offset < len(data):
         header = data[offset:offset + 60]
-        name = header[:16].decode("ascii").strip().rstrip("/")
+        name = header[:16].decode("ascii").strip()
         size = int(header[48:58].decode("ascii").strip())
         offset += 60
         members[name] = data[offset:offset + size]
@@ -108,14 +110,19 @@ class PackageBuildTests(unittest.TestCase):
             self.assertEqual(list(members), ["debian-binary", "control.tar.gz", "data.tar.gz"])
             self.assertEqual(members["debian-binary"], b"2.0\n")
             with tarfile.open(fileobj=io.BytesIO(members["control.tar.gz"]), mode="r:gz") as archive:
-                self.assertEqual(len(archive.getnames()), 5)
-                control = archive.extractfile("control").read().decode("utf-8")
+                self.assertEqual(archive.getnames()[0], ".")
+                self.assertEqual(len(archive.getnames()), 6)
+                control = archive.extractfile("./control").read().decode("utf-8")
                 self.assertIn("Version: %s\n" % __version__, control)
                 self.assertIn("Maintainer: NASpeed test maintainer <builder@example.invalid>", control)
-                self.assertTrue(all(script in archive.getnames() for script in build.SCRIPT_NAMES))
+                self.assertTrue(
+                    all("./" + script in archive.getnames() for script in build.SCRIPT_NAMES)
+                )
             with tarfile.open(fileobj=io.BytesIO(members["data.tar.gz"]), mode="r:gz") as archive:
                 names = archive.getnames()
-                prefix = "usr/local/naspeed/"
+                self.assertEqual(names[0], ".")
+                self.assertTrue(all(name == "." or name.startswith("./") for name in names))
+                prefix = "./usr/local/naspeed/"
                 self.assertIn(prefix + "config.ini", names)
                 self.assertIn(prefix + "naspeed.lang", names)
                 self.assertIn(prefix + "LICENSE", names)
@@ -143,16 +150,57 @@ class PackageBuildTests(unittest.TestCase):
             destination = build_deb(temp)
             members = read_ar(destination)
             with tarfile.open(fileobj=io.BytesIO(members["data.tar.gz"]), mode="r:gz") as archive:
-                exe = archive.getmember("usr/local/naspeed/bin/naspeed")
-                icon = archive.getmember("usr/local/naspeed/images/icons/naspeed.svg")
-                app_dir = archive.getmember("usr/local/naspeed/")
+                exe = archive.getmember("./usr/local/naspeed/bin/naspeed")
+                icon = archive.getmember("./usr/local/naspeed/images/icons/naspeed.svg")
+                app_dir = archive.getmember("./usr/local/naspeed/")
                 self.assertEqual((exe.uid, exe.gid, exe.mode), (0, 0, 0o755))
                 self.assertEqual((icon.uid, icon.gid, icon.mode), (0, 0, 0o644))
                 self.assertEqual((app_dir.uid, app_dir.gid, app_dir.mode), (0, 0, 0o755))
             with tarfile.open(fileobj=io.BytesIO(members["control.tar.gz"]), mode="r:gz") as archive:
                 for script in build.SCRIPT_NAMES:
-                    member = archive.getmember(script)
+                    member = archive.getmember("./" + script)
                     self.assertEqual((member.uid, member.gid, member.mode), (0, 0, 0o755))
+
+    @unittest.skipUnless(
+        os.name == "posix" and all(shutil.which(tool) for tool in ("bash", "tar", "bzip2")),
+        "the install script needs bash, tar and bzip2",
+    )
+    def test_postinst_refreshes_the_web_interface_only_on_upgrade(self):
+        script = (ROOT / "packaging" / "DEBIAN" / "postinst").read_text(encoding="utf-8")
+        archive = build._webui_archive(ROOT, "9.9.9")
+        with tempfile.TemporaryDirectory() as temp:
+            temp = pathlib.Path(temp)
+            stubs = temp / "stubs"
+            stubs.mkdir()
+            (stubs / "systemctl").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            (stubs / "systemctl").chmod(0o755)
+            env = dict(os.environ, PATH=str(stubs) + os.pathsep + os.environ["PATH"])
+
+            def run_postinst(app_dir):
+                patched = temp / "postinst"
+                patched.write_text(script.replace("/usr/local/naspeed", str(app_dir)), encoding="utf-8")
+                return subprocess.run(["bash", str(patched), "configure"], env=env,
+                                      capture_output=True, text=True, check=False)
+
+            upgrade = temp / "upgrade"
+            (upgrade / "webui").mkdir(parents=True)
+            (upgrade / "webui" / "index.html").write_bytes(b"old")
+            (upgrade / "webui.bz2").write_bytes(archive)
+            self.assertEqual(run_postinst(upgrade).returncode, 0)
+            index = upgrade / "webui" / "index.html"
+            self.assertIn(b"9.9.9", index.read_bytes())
+            self.assertGreater(index.stat().st_mtime, 86400)
+
+            fresh = temp / "fresh"
+            fresh.mkdir()
+            (fresh / "webui.bz2").write_bytes(archive)
+            self.assertEqual(run_postinst(fresh).returncode, 0)
+            self.assertFalse((fresh / "webui").exists())
+
+            broken = temp / "broken"
+            (broken / "webui").mkdir(parents=True)
+            (broken / "webui.bz2").write_bytes(b"not a bzip2 archive")
+            self.assertEqual(run_postinst(broken).returncode, 0)
 
     def test_source_validation_passes_without_developer_metadata(self):
         version, beta, icon = build._validate_package_sources(ROOT)

@@ -47,5 +47,11 @@
 
   applyTheme(theme());
 
+  /* Inside the TOS desktop the page lives in an iframe and TOS lays its window
+     controls over the top of it; the stylesheet keeps that strip clear. */
+  if (window.self !== window.top) {
+    document.documentElement.classList.add("embedded");
+  }
+
   window.NASpeedPrefs = { get: get, set: set, theme: theme, applyTheme: applyTheme };
 })();

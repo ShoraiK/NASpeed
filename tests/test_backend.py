@@ -217,8 +217,10 @@ class TestFlowTests(AppCase):
         self.assertEqual((status, payload["error"]), (400, "unknown_provider"))
 
     def test_last_provider_is_remembered(self):
-        self.call("POST", "/api/test/start", {"provider": "librespeed"})
         self.assertEqual(self.store.get_settings()["default_provider"], "librespeed")
+        self.call("POST", "/api/test/start", {"provider": "cloudflare"})
+        self.assertEqual(self.store.get_settings()["default_provider"], "cloudflare")
+        self.assertEqual(Store(self.cfg.data_dir).get_settings()["default_provider"], "cloudflare")
 
     def test_mlab_needs_the_privacy_notice(self):
         status, payload, _ = self.call("POST", "/api/test/start", {"provider": "mlab"})
@@ -265,6 +267,12 @@ class SettingsAndHistoryTests(AppCase):
         self.call("POST", "/api/settings", {"history_limit": 40, "duration": "quick"})
         again = Store(self.cfg.data_dir).get_settings()
         self.assertEqual((again["history_limit"], again["duration"]), (40, "quick"))
+
+    def test_language_is_unset_until_chosen_and_persists(self):
+        self.assertNotIn("language", self.call("GET", "/api/info")[1]["settings"])
+        self.assertEqual(self.call("POST", "/api/settings", {"language": "es"})[1]["language"], "es")
+        self.assertEqual(self.call("POST", "/api/settings", {"language": "xx"})[1]["language"], "es")
+        self.assertEqual(Store(self.cfg.data_dir).get_settings()["language"], "es")
 
     def test_history_is_capped_and_newest_first(self):
         self.store.update_settings({"history_limit": 10})

@@ -18,7 +18,6 @@
     "action.stop": "Detener",
     "theme.toDark": "Cambiar a tema oscuro",
     "theme.toLight": "Cambiar a tema claro",
-    "lang.label": "Idioma",
 
     "status.ready": "Listo para medir",
     "status.ready.sub": "El test se ejecuta en el NAS, no en este navegador.",
@@ -67,6 +66,7 @@
     "route.protocol": "Protocolo",
     "route.history": "Historial",
     "value.auto": "Automático",
+    "value.on": "Activado",
     "value.off": "Desactivado",
     "value.anyip": "IPv4 o IPv6",
     "history.of": "{n} de {max}",
@@ -91,7 +91,7 @@
     "dialog.cancel": "Cancelar",
 
     "prov.label": "Proveedor del test",
-    "prov.ookla": "Muchos servidores. Cliente no oficial.",
+    "prov.ookla": "Muchos servidores.\nCliente no oficial.",
     "prov.cloudflare": "Anycast: responde el centro más cercano.",
     "prov.mlab": "Una sola conexión. Resultados públicos.",
     "prov.librespeed": "Servidores comunitarios de código abierto.",
@@ -198,7 +198,6 @@
     "action.stop": "Stop",
     "theme.toDark": "Switch to dark theme",
     "theme.toLight": "Switch to light theme",
-    "lang.label": "Language",
 
     "status.ready": "Ready to measure",
     "status.ready.sub": "The test runs on the NAS, not in this browser.",
@@ -247,6 +246,7 @@
     "route.protocol": "Protocol",
     "route.history": "History",
     "value.auto": "Automatic",
+    "value.on": "On",
     "value.off": "Off",
     "value.anyip": "IPv4 or IPv6",
     "history.of": "{n} of {max}",
@@ -271,7 +271,7 @@
     "dialog.cancel": "Cancel",
 
     "prov.label": "Test provider",
-    "prov.ookla": "Many servers. Unofficial client.",
+    "prov.ookla": "Many servers.\nUnofficial client.",
     "prov.cloudflare": "Anycast: the nearest data centre answers.",
     "prov.mlab": "A single connection. Public results.",
     "prov.librespeed": "Open-source community servers.",
@@ -378,7 +378,6 @@
     "action.stop": "Arrêter",
     "theme.toDark": "Passer au thème sombre",
     "theme.toLight": "Passer au thème clair",
-    "lang.label": "Langue",
 
     "status.ready": "Prêt à mesurer",
     "status.ready.sub": "Le test s'exécute sur le NAS, pas dans ce navigateur.",
@@ -427,6 +426,7 @@
     "route.protocol": "Protocole",
     "route.history": "Historique",
     "value.auto": "Automatique",
+    "value.on": "Activé",
     "value.off": "Désactivé",
     "value.anyip": "IPv4 ou IPv6",
     "history.of": "{n} sur {max}",
@@ -451,7 +451,7 @@
     "dialog.cancel": "Annuler",
 
     "prov.label": "Fournisseur du test",
-    "prov.ookla": "Nombreux serveurs. Client non officiel.",
+    "prov.ookla": "Nombreux serveurs.\nClient non officiel.",
     "prov.cloudflare": "Anycast : le centre le plus proche répond.",
     "prov.mlab": "Une seule connexion. Résultats publics.",
     "prov.librespeed": "Serveurs communautaires open source.",
@@ -558,7 +558,6 @@
     "action.stop": "Stoppen",
     "theme.toDark": "Zum dunklen Design wechseln",
     "theme.toLight": "Zum hellen Design wechseln",
-    "lang.label": "Sprache",
 
     "status.ready": "Bereit zum Messen",
     "status.ready.sub": "Der Test läuft auf dem NAS, nicht in diesem Browser.",
@@ -607,6 +606,7 @@
     "route.protocol": "Protokoll",
     "route.history": "Verlauf",
     "value.auto": "Automatisch",
+    "value.on": "Ein",
     "value.off": "Aus",
     "value.anyip": "IPv4 oder IPv6",
     "history.of": "{n} von {max}",
@@ -631,7 +631,7 @@
     "dialog.cancel": "Abbrechen",
 
     "prov.label": "Testanbieter",
-    "prov.ookla": "Viele Server. Inoffizieller Client.",
+    "prov.ookla": "Viele Server.\nInoffizieller Client.",
     "prov.cloudflare": "Anycast: Das nächste Rechenzentrum antwortet.",
     "prov.mlab": "Nur eine Verbindung. Öffentliche Ergebnisse.",
     "prov.librespeed": "Open-Source-Server der Community.",
@@ -738,7 +738,6 @@
     "action.stop": "Parar",
     "theme.toDark": "Mudar para tema escuro",
     "theme.toLight": "Mudar para tema claro",
-    "lang.label": "Idioma",
 
     "status.ready": "Pronto para medir",
     "status.ready.sub": "O teste corre no NAS, não neste navegador.",
@@ -787,6 +786,7 @@
     "route.protocol": "Protocolo",
     "route.history": "Histórico",
     "value.auto": "Automático",
+    "value.on": "Ativado",
     "value.off": "Desativado",
     "value.anyip": "IPv4 ou IPv6",
     "history.of": "{n} de {max}",
@@ -811,7 +811,7 @@
     "dialog.cancel": "Cancelar",
 
     "prov.label": "Fornecedor do teste",
-    "prov.ookla": "Muitos servidores. Cliente não oficial.",
+    "prov.ookla": "Muitos servidores.\nCliente não oficial.",
     "prov.cloudflare": "Anycast: responde o centro mais próximo.",
     "prov.mlab": "Uma só ligação. Resultados públicos.",
     "prov.librespeed": "Servidores comunitários de código aberto.",
@@ -918,7 +918,6 @@
     "action.stop": "停止",
     "theme.toDark": "切换到深色主题",
     "theme.toLight": "切换到浅色主题",
-    "lang.label": "语言",
 
     "status.ready": "准备就绪",
     "status.ready.sub": "测速在 NAS 上运行，而不是在此浏览器中。",
@@ -967,6 +966,7 @@
     "route.protocol": "协议",
     "route.history": "历史记录",
     "value.auto": "自动",
+    "value.on": "已开启",
     "value.off": "已关闭",
     "value.anyip": "IPv4 或 IPv6",
     "history.of": "{n} / {max}",
@@ -991,7 +991,7 @@
     "dialog.cancel": "取消",
 
     "prov.label": "测速服务商",
-    "prov.ookla": "服务器众多，非官方客户端。",
+    "prov.ookla": "服务器众多。\n非官方客户端。",
     "prov.cloudflare": "任播：由最近的数据中心响应。",
     "prov.mlab": "单连接，结果公开。",
     "prov.librespeed": "开源社区服务器。",

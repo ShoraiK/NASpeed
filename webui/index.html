@@ -36,7 +36,6 @@
           <button type="button" data-view="settings" data-i18n="nav.settings">Settings</button>
         </nav>
         <div class="prefs">
-          <select class="field field-compact" id="lang-top" name="language" autocomplete="off" data-i18n-attr="aria-label:lang.label"></select>
           <button type="button" class="icon-btn" id="theme-toggle" aria-label="Theme">
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
               <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 3v14a7 7 0 0 1 0-14z"/>
@@ -190,9 +189,12 @@
       <div class="tile s-tile">
         <h2 class="statement" data-i18n="set.history">Save history</h2>
         <p class="note" data-i18n="set.history.help"></p>
-        <button type="button" class="switch" id="set-history" role="switch" aria-checked="true" data-i18n-attr="aria-label:set.history">
-          <span class="switch-knob" aria-hidden="true"></span>
-        </button>
+        <div class="switch-row">
+          <button type="button" class="switch" id="set-history" role="switch" aria-checked="true" data-i18n-attr="aria-label:set.history">
+            <span class="switch-knob" aria-hidden="true"></span>
+          </button>
+          <span class="switch-state" id="set-history-state" aria-hidden="true"></span>
+        </div>
       </div>
       <div class="tile s-tile">
         <h2 class="statement" data-i18n="set.limit">Results to keep</h2>

@@ -3,13 +3,13 @@
 # SPDX-License-Identifier: GPL-3.0-only
 set -e
 
-systemctl daemon-reload
+systemctl daemon-reload || true
 
 if [ "$1" = "purge" ]; then
     rm -f /var/api/naspeed.sock
-    rm -rf /usr/local/naspeed/data /usr/local/naspeed/logs
+    rm -rf /usr/local/naspeed/data /usr/local/naspeed/logs /usr/local/naspeed/run
     systemctl disable naspeed.service 2>/dev/null || true
-    systemctl daemon-reload
+    systemctl daemon-reload || true
 fi
 
 exit 0

@@ -3,7 +3,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 set -e
 
-install -d -m 0755 /var/api
 install -d -m 0750 /usr/local/naspeed/data /usr/local/naspeed/logs
 
 exit 0

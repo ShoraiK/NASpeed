@@ -106,6 +106,85 @@ html {
   text-size-adjust: 100%;
 }
 
+/* Inside TOS the window controls float over the top 40 px of the page (and
+   their drag strip swallows clicks there). That strip stays empty. */
+html.embedded {
+  --tos-bar: 40px;
+}
+
+html.embedded body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 15;
+  height: var(--tos-bar);
+  background: var(--page);
+}
+
+html.embedded .dlg {
+  inset-block-start: var(--tos-bar);
+  max-height: min(600px, calc(100vh - var(--tos-bar) - 32px));
+}
+
+/* There the page scrolls inside the body, which starts below the strip, so
+   the scrollbar never runs under the window controls. */
+html.embedded {
+  height: 100%;
+  overflow: hidden;
+}
+
+html.embedded body {
+  position: fixed;
+  inset: var(--tos-bar) 0 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* The action button touches the top edge (and, with the scrollbar below, the
+   right one), where an outer focus ring would be cut off. */
+html.embedded .action:focus-visible {
+  outline-color: var(--paper);
+  outline-offset: -7px;
+}
+
+/* Where it can be styled, the scrollbar is as wide as the page margin and
+   takes its place, so nothing moves when a view starts to scroll. */
+@supports selector(::-webkit-scrollbar) {
+  html.embedded body {
+    scrollbar-gutter: stable;
+  }
+
+  html.embedded body::-webkit-scrollbar {
+    width: var(--gap);
+  }
+
+  html.embedded body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  html.embedded body::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: var(--gap);
+    background: var(--paper-2) padding-box;
+  }
+
+  html.embedded body::-webkit-scrollbar-thumb:hover {
+    background-color: var(--ink-3);
+  }
+
+  html.embedded .app {
+    padding-right: 0;
+  }
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  html.embedded body {
+    scrollbar-width: thin;
+    scrollbar-color: var(--paper-2) transparent;
+  }
+}
+
 body {
   margin: 0;
   background: var(--page);
@@ -165,12 +244,14 @@ a {
 .statement {
   font: 600 var(--fs-statement) / 1.15 var(--display);
   letter-spacing: -0.02em;
+  text-wrap: balance;
 }
 
 .note {
   font-size: var(--fs-small);
   line-height: 1.4;
   color: var(--ink-2);
+  text-wrap: pretty;
 }
 
 /* ---- Shell -------------------------------------------------------------- */
@@ -184,6 +265,11 @@ a {
   gap: var(--gap);
 }
 
+html.embedded .app {
+  min-height: 100%;
+  padding-top: 0;
+}
+
 main {
   flex: 1 1 auto;
   display: flex;
@@ -193,14 +279,14 @@ main {
 
 .skip-link {
   position: fixed;
-  top: var(--gap);
+  top: calc(var(--gap) + var(--tos-bar, 0px));
   left: var(--gap);
   z-index: 20;
   padding: 10px 14px;
   border-radius: var(--r);
   background: var(--ink);
   color: var(--paper);
-  transform: translateY(calc(-100% - var(--gap)));
+  transform: translateY(calc(-100% - var(--gap) - var(--tos-bar, 0px)));
 }
 
 .skip-link:focus-visible {
@@ -229,6 +315,28 @@ main {
   grid-template-columns: 60px minmax(0, 1fr) calc((100% - 11 * var(--gap)) / 6 + var(--gap));
   gap: var(--gap);
   min-height: 60px;
+}
+
+/* The top row stays in view while a long page scrolls under it. */
+@media (min-width: 681px) {
+  html,
+  html.embedded body {
+    scroll-padding-top: calc(60px + 2 * var(--gap));
+  }
+
+  .top {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+
+  .top::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: calc(-1 * var(--gap)) 0;
+    background: var(--page);
+  }
 }
 
 .mark {
@@ -398,11 +506,6 @@ main {
   color: var(--ink);
 }
 
-.field-compact {
-  height: 36px;
-  padding: 0 8px;
-}
-
 .field-number {
   width: 120px;
   font-variant-numeric: tabular-nums;
@@ -436,6 +539,16 @@ main {
 .seg button[aria-checked="true"] {
   background: var(--ink);
   color: var(--paper);
+  font-weight: 600;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.switch-state {
   font-weight: 600;
 }
 
@@ -671,8 +784,7 @@ main {
 .prov {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 14px 16px;
+  padding: 12px 16px;
   transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
 }
 
@@ -694,6 +806,7 @@ main {
   -webkit-line-clamp: 2;
   line-clamp: 2;
   overflow: hidden;
+  white-space: pre-line;
 }
 
 .prov[aria-checked="true"] {
@@ -773,6 +886,11 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
+.pairs dd.long {
+  font-size: var(--fs-small);
+  line-height: 1.25;
+}
+
 /* ---- History ------------------------------------------------------------ */
 
 .h-fig {
@@ -811,7 +929,11 @@ main {
 }
 
 .h-actions .field {
-  flex: 1 1 140px;
+  flex: 1 1 100%;
+}
+
+.h-actions .btn {
+  flex: 1 1 0;
 }
 
 .h-chart {
@@ -1009,14 +1131,14 @@ td {
 
 .s-tile > .seg,
 .s-tile > .field,
-.s-tile > .switch {
+.s-tile > .switch-row {
   margin-top: auto;
   align-self: flex-start;
 }
 
 .s-tile > .note + .seg,
 .s-tile > .note + .field,
-.s-tile > .note + .switch {
+.s-tile > .note + .switch-row {
   padding-top: 0;
 }
 
@@ -1372,8 +1494,7 @@ td {
     padding: 0 8px;
   }
 
-  .wordmark,
-  #lang-top {
+  .wordmark {
     display: none;
   }
 

@@ -28,9 +28,11 @@ HISTORY_HARD_LIMIT = 1000
 DURATIONS = {"quick": 5.0, "standard": 8.0, "long": 15.0}
 CONNECTION_CHOICES = ("auto", "1", "2", "4", "8", "16", "32")
 IP_VERSIONS = ("auto", "4", "6")
+LANGUAGES = ("en", "es", "fr", "de", "pt", "zh")
 
 DEFAULT_SETTINGS = {
-    "default_provider": "ookla",
+    # "language" is absent until someone picks one; the web UI then uses English.
+    "default_provider": "librespeed",
     "duration": "standard",
     "connections": "auto",
     "ip_version": "auto",
@@ -86,6 +88,9 @@ def validate_settings(patch, provider_ids=()):
     clean = {}
     if not isinstance(patch, dict):
         return clean
+    value = patch.get("language")
+    if value in LANGUAGES:
+        clean["language"] = value
     value = patch.get("default_provider")
     if isinstance(value, str) and (not provider_ids or value in provider_ids):
         clean["default_provider"] = value

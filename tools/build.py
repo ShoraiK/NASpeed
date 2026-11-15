@@ -10,6 +10,7 @@ import ast
 import gzip
 import io
 import json
+import os
 import pathlib
 import re
 import shutil
@@ -17,6 +18,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import zipapp
 from urllib.parse import urlparse
 from xml.etree import ElementTree
@@ -179,9 +181,11 @@ def _validate_package_sources(root: pathlib.Path = ROOT) -> tuple[str, bool, byt
     service = root / "packaging" / "init.d" / "naspeed.service"
     service_text = service.read_text(encoding="utf-8")
     for directive in (
-        "User=naspeed", "Group=naspeed", "WorkingDirectory=/usr/local/naspeed",
+        "User=naspeed", "WorkingDirectory=/usr/local/naspeed",
         "NoNewPrivileges=true", "ProtectSystem=strict", "ProtectHome=true",
-        "ReadWritePaths=/usr/local/naspeed/data /usr/local/naspeed/logs /var/api",
+        "ReadWritePaths=-/usr/local/naspeed/data -/usr/local/naspeed/logs -/usr/local/naspeed/run",
+        "Environment=NASPEED_SOCKET=/usr/local/naspeed/run/naspeed.sock",
+        "ExecStartPre=+/bin/sh -c", "ExecStopPost=+/bin/rm -f /var/api/naspeed.sock",
         "TimeoutStartSec=30", "TimeoutStopSec=10", "StartLimitBurst=5",
         "StartLimitIntervalSec=60", "WantedBy=multi-user.target",
     ):
@@ -340,17 +344,18 @@ def _zipapp(root: pathlib.Path, destination: pathlib.Path) -> None:
 
 
 def _tar_gz(paths: list[tuple[pathlib.Path, str]]) -> bytes:
+    # Same layout as dpkg-deb: GNU tar, "./"-prefixed names and a "./" root entry.
     output = io.BytesIO()
     with gzip.GzipFile(fileobj=output, mode="wb", filename="", mtime=0) as compressed:
-        with tarfile.open(fileobj=compressed, mode="w", format=tarfile.USTAR_FORMAT) as archive:
-            for source, name in sorted(paths, key=lambda item: item[1]):
-                info = tarfile.TarInfo(name)
-                if source.is_dir():
+        with tarfile.open(fileobj=compressed, mode="w", format=tarfile.GNU_FORMAT) as archive:
+            entries = [(None, "")] + sorted(paths, key=lambda item: item[1])
+            for source, name in entries:
+                info = tarfile.TarInfo("./" + name)
+                if source is None or source.is_dir():
                     data = b""
                     info.type = tarfile.DIRTYPE
                     info.mode = 0o755
-                    name = name.rstrip("/") + "/"
-                    info.name = name
+                    info.name = "./" + name.rstrip("/") + "/" if name else "./"
                 else:
                     data = source.read_bytes()
                     info.mode = 0o755 if name in SCRIPT_NAMES or name.endswith("/bin/naspeed") else 0o644
@@ -359,15 +364,25 @@ def _tar_gz(paths: list[tuple[pathlib.Path, str]]) -> bytes:
                 info.uname = info.gname = "root"
                 info.mtime = 0
                 archive.addfile(info, io.BytesIO(data) if data else None)
-    return output.getvalue()
+    packed = bytearray(output.getvalue())
+    packed[9] = 3  # gzip OS field: Unix, as written by dpkg-deb
+    return bytes(packed)
+
+
+def _build_timestamp() -> int:
+    try:
+        return int(os.environ["SOURCE_DATE_EPOCH"])
+    except (KeyError, ValueError):
+        return int(time.time())
 
 
 def _ar_member(name: str, payload: bytes) -> bytes:
-    if len(name) > 15 or "/" in name:
+    # dpkg-deb names members without the GNU "/" terminator.
+    if len(name) > 16 or "/" in name:
         raise BuildError("Invalid ar member name: %s." % name)
     header = (
-        (name + "/").ljust(16)
-        + "0".ljust(12)
+        name.ljust(16)
+        + str(_build_timestamp()).ljust(12)
         + "0".ljust(6)
         + "0".ljust(6)
         + "100644".ljust(8)

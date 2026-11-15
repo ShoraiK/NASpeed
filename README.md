@@ -13,7 +13,7 @@ Measure the connection your TerraMaster NAS actually gets — not the one your b
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white">
   <img alt="Zero dependencies" src="https://img.shields.io/badge/dependencies-none-2fd08a?style=flat-square">
   <img alt="6 interface languages" src="https://img.shields.io/badge/UI%20languages-6-ffb52e?style=flat-square">
-  <img alt="Version 0.2.0 beta" src="https://img.shields.io/badge/version-0.2.0%20beta-fe7d37?style=flat-square">
+  <img alt="Version 0.2.2 beta" src="https://img.shields.io/badge/version-0.2.2%20beta-fe7d37?style=flat-square">
   <a href="LICENSE"><img alt="License: GPL-3.0-only" src="https://img.shields.io/badge/license-GPL--3.0--only-a32d2a?style=flat-square"></a>
 </p>
 
@@ -157,6 +157,10 @@ M-Lab is the exception to the shared method: NDT7 uses a single connection for a
 
 NASpeed is distributed as a TOS 7 package. The whole application — service and web UI — also runs from source on any machine with **Python 3.10 or newer**, with no dependencies to install.
 
+On first launch, without saved preferences, the interface uses **English** and selects **LibreSpeed**.
+Change the language in **Settings**; it is saved on the NAS and restored whenever the app opens.
+The provider is remembered when a test starts, not merely when its tile is selected.
+
 ### Install on TOS 7 (beta)
 
 NASpeed is not in the TerraMaster App Center yet. Download `naspeed_x86_64.deb` and `naspeed_x86_64.deb.sha256` from the [Releases page](https://github.com/ShoraiK/NASpeed/releases) to the NAS and, from an SSH session in that folder, run:
@@ -254,11 +258,12 @@ and writes no log file. Explicit command-line options and `NASPEED_*` environmen
 
 | Permission | Rationale |
 |---|---|
-| Network: no inbound port | The interface is reached only through the TOS platform proxy, over the Unix socket `/var/api/naspeed.sock` |
+| Network: no inbound port | The interface is reached only through the TOS platform proxy, over the Unix socket `/usr/local/naspeed/run/naspeed.sock`, reachable as `/var/api/naspeed.sock` |
 | Network: outbound connections | To the provider you pick and its test servers, while a test runs or a server list is loaded — see [Ports](#ports) |
 | File system: `/usr/local/naspeed/data/` | Settings and test history |
 | File system: `/usr/local/naspeed/logs/` | Service log, rotated |
-| File system: `/var/api/naspeed.sock` | The socket the TOS proxy connects to |
+| File system: `/usr/local/naspeed/run/` | Holds the socket the TOS proxy connects to |
+| File system: `/var/api/naspeed.sock` | A symbolic link to that socket. `/var/api` is not writable by an unprivileged user on TOS, so the service creates the link with a privileged `ExecStartPre` step and removes it on stop |
 | User: `naspeed` (system user) | Isolated service execution — never `root` |
 | Shared folder: None | NASpeed never reads or writes your files |
 
@@ -286,19 +291,20 @@ Latency is sampled with plain TCP connections to the same server and port.
 | Path (relative to `/usr/local/naspeed/data/` unless noted) | Purpose | Format | Created when | Growth bound / rotation | Lifecycle |
 |---|---|---|---|---|---|
 | `/usr/local/naspeed/data/` | Container for settings and history | Directory | On start, if missing | Contents listed below | Persistent |
-| `settings.json` | Your settings and the notices you accepted | JSON, mode `0600` | First time a setting changes or a notice is accepted | Typically under 1 KB; not a byte quota | Persistent — survives restart; intended to survive upgrade |
+| `settings.json` | Your settings — including the interface language and the provider of the last test — and the notices you accepted | JSON, mode `0600` | First time a setting changes (a test with another provider counts) or a notice is accepted | Typically under 1 KB; not a byte quota | Persistent — survives restart; intended to survive upgrade |
 | `history.json` | Saved test results | JSON, mode `0600` | First saved test, unless history is off; also when history is cleared | Capped by result count (10–1000, default 300), not bytes. Sample results average about 1.5 KB: roughly 0.5 MB for 300 or 1.5 MB for 1000; actual sizes vary | Persistent — delete entries or clear it from the History view |
 | `<file>.tmp-<pid>` | Atomic write of `settings.json` or `history.json` | JSON | On every save | One per file being saved; renamed over the target at once | Temporary — leftovers from a crash are removed on start |
 | `<file>.corrupt` | An unreadable `settings.json` or `history.json`, set aside for inspection | As the original | Only if a file cannot be read | At most one per file; replaced if it happens again | Kept for inspection — safe to delete |
 | `/usr/local/naspeed/logs/` | Container for service logs | Directory | On start, if missing | Contents listed below | Persistent |
 | `/usr/local/naspeed/logs/naspeed.log` | Service log | Text: `[time] [level] [component] message` | On start | Rotated at 512 KiB, keeping 2 old files (`.1`, `.2`): about 1.5 MiB total | Persistent, rotated |
-| `/var/api/naspeed.sock` | Socket for the TOS platform proxy | Unix socket, mode `0660` | On start | N/A | Removed on stop; a stale one is replaced on start |
+| `/usr/local/naspeed/run/naspeed.sock` | Socket for the TOS platform proxy | Unix socket, mode `0660` | On start | N/A | Removed on stop; a stale one is replaced on start |
+| `/var/api/naspeed.sock` | Link the TOS proxy follows to the socket above | Symbolic link, created by root | On every service start | N/A | Removed on stop |
 
 The TOS package serves the interface archive from memory without extracting it. NASpeed creates no cache
 or files in `/tmp`, its measurement workers write no application data, and the command line keeps its results in
 memory. The service also logs to stdout, captured by the system journal under systemd. When running Python
 directly from source, Python may create ignored `__pycache__/` directories; set `PYTHONDONTWRITEBYTECODE=1` to
-disable them. The browser stores only theme and language preferences in local storage.
+disable them. The browser keeps only the theme and a copy of the language (to paint the first frame) in local storage.
 
 ## Roadmap
 
@@ -317,7 +323,7 @@ disable them. The browser stores only theme and language preferences in local st
 ## Versioning
 
 NASpeed uses plain numeric `MAJOR.MINOR.PATCH` versions, the format the TOS App Center compares to offer updates.
-The current version is **0.2.0**, a beta.
+The current version is **0.2.2**, a beta.
 
 - **0.x releases are betas.** Features, settings and the API may still change between them. Beta status is
   tracked separately, never as a `-beta` suffix, so every release remains a plain, comparable number.
