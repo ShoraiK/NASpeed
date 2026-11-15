@@ -139,7 +139,7 @@ Every provider is measured with the **same method**, so results are comparable b
 | **Latency** | 12 samples of TCP connect time, reported as median, minimum, maximum and jitter |
 | **Warm-up** | Connections ramp up first. This phase (at least 1.5 s) is **discarded** |
 | **Download / upload** | Bytes are counted over a fixed window of **5 s, 8 s or 15 s** (Quick, Standard, Long) per direction. Speed = bytes × 8 ÷ window length, in decimal Mb/s |
-| **Connections** | Scaled automatically with the speed observed — from 4 up to 32, within limits set by the NAS's CPU count — or fixed by you |
+| **Connections** | Scaled automatically — from 4 up to 32, adding more while the speed observed keeps rising, within limits set by the NAS's CPU count — or fixed by you |
 | **Under load** | Latency keeps being sampled during the transfers, to expose bufferbloat |
 | **NAS load** | The processor is read at the start and end of each window: the whole CPU, its busiest core and NASpeed's own share. The result warns when the CPU reached 90 %, one core 95 %, or a CPU quota held NASpeed back in 5 % of scheduler periods |
 | **Payload** | Uploads send random, incompressible data |

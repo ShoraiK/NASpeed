@@ -26,7 +26,8 @@ from naspeed import BETA, __version__, auth, cli, config  # noqa: E402
 from naspeed.api import App, strip_prefix  # noqa: E402
 from naspeed.config import Config, _checkout_root, build_parser, load_config  # noqa: E402
 from naspeed.engine import cpu, latency  # noqa: E402
-from naspeed.engine.runner import TestError, _recent_rate, _resample, streams_for_speed  # noqa: E402
+from naspeed.engine.runner import (  # noqa: E402
+    StreamScaler, TestError, _recent_rate, _resample, streams_for_speed)
 from naspeed.httpd import Request  # noqa: E402
 from naspeed.providers import build_registry  # noqa: E402
 from naspeed.store import Store  # noqa: E402
@@ -350,6 +351,43 @@ class EngineMathTests(unittest.TestCase):
     def test_connection_scaling(self):
         self.assertEqual([streams_for_speed(v) for v in (10, 149, 150, 599, 600, 2499, 2500, 5999, 6000, 10000)],
                          [4, 4, 8, 8, 16, 16, 24, 24, 32, 32])
+
+    def test_scaler_keeps_adding_while_each_connection_is_limited(self):
+        # A service that gives every connection 33 Mbit/s on a much faster line,
+        # as Cloudflare's upload once did: each step doubles the speed.
+        scaler = StreamScaler(cap=16)
+        steps, streams = [], 4
+        for _ in range(3):
+            streams = scaler.wanted(33.0 * streams, streams)
+            steps.append(streams)
+        self.assertEqual(steps, [8, 16, 16])
+        self.assertTrue(scaler.growing)
+
+    def test_scaler_stops_once_the_line_is_full(self):
+        # A 100 Mbit/s line: the trial step to 8 connections brings nothing.
+        scaler = StreamScaler(cap=16)
+        self.assertEqual(scaler.wanted(95.0, 4), 8)
+        self.assertEqual(scaler.wanted(97.0, 8), 8)
+        self.assertFalse(scaler.growing)
+        self.assertEqual(scaler.wanted(99.0, 8), 8)
+
+    def test_scaler_follows_the_speed_on_fast_lines(self):
+        # A 1 Gbit/s line: the speed rule jumps to 16 and growth stops there.
+        scaler = StreamScaler(cap=16)
+        self.assertEqual(scaler.wanted(800.0, 4), 16)
+        self.assertEqual(scaler.wanted(950.0, 16), 16)
+        self.assertFalse(scaler.growing)
+        # The speed rule still applies once growth has stopped.
+        scaler = StreamScaler(cap=32)
+        self.assertEqual(scaler.wanted(1800.0, 4), 16)
+        self.assertEqual(scaler.wanted(2000.0, 16), 16)
+        self.assertEqual(scaler.wanted(3000.0, 16), 24)
+
+    def test_scaler_waits_for_data_and_respects_the_cap(self):
+        scaler = StreamScaler(cap=16)
+        self.assertEqual(scaler.wanted(0.0, 4), 4)
+        self.assertEqual(scaler.wanted(120.0, 4), 8)
+        self.assertEqual(StreamScaler(cap=4).wanted(120.0, 4), 4)
 
     def test_recent_rate(self):
         # 125 000 bytes every 0.1 s is exactly 10 Mbit/s.

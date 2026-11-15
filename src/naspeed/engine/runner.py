@@ -44,6 +44,10 @@ SERIES_INTERVAL = 0.1
 NO_DATA_TIMEOUT = 8.0
 PING_SAMPLES = 12
 RESULT_SERIES_POINTS = 48
+# A step that adds connections counts as "still growing" when the speed rose by
+# at least this share of what the new connections would add if each carried as
+# much as the old ones did.
+GROWTH_SHARE = 0.5
 
 # Share of the overall progress bar taken by each phase.
 PHASE_SPAN = (("init", 0.05), ("ping", 0.07), ("download", 0.44), ("upload", 0.44))
@@ -71,6 +75,45 @@ def streams_for_speed(mbps):
     if mbps < 6000:
         return 24
     return 32
+
+
+class StreamScaler:
+    """Decides how many connections a transfer should have once it has warmed up.
+
+    Two rules, and the larger answer wins:
+
+    * the speed: ``streams_for_speed`` of the recent rate;
+    * the growth: a trial step that doubles the connections, repeated while
+      each step keeps raising the speed by at least ``GROWTH_SHARE`` of what
+      the new connections would add at the old speed per connection.
+
+    A full line stops after the trial step. A service that limits every
+    connection, as Cloudflare's upload sometimes does, keeps getting more
+    connections up to ``cap``.
+    """
+
+    def __init__(self, cap):
+        self.cap = cap
+        self.growing = True
+        self._before = None  # (streams, rate) just before the last step
+
+    def wanted(self, rate, streams):
+        """Connections to run, given the recent ``rate`` (Mbit/s) with ``streams`` open."""
+        if rate <= 0:
+            return streams  # nothing to judge until data flows
+        if self.growing and self._before is not None:
+            old_streams, old_rate = self._before
+            added = streams / old_streams - 1
+            if added > 0 and old_rate > 0:
+                self.growing = (rate / old_rate - 1) / added >= GROWTH_SHARE
+        target = streams_for_speed(rate)
+        if self.growing:
+            target = max(target, streams * 2)
+        target = min(self.cap, target)
+        if target <= streams:
+            return streams
+        self._before = (streams, rate)
+        return target
 
 
 def stream_cap(tls):
@@ -326,6 +369,7 @@ class TestRunner:
         snap = None
         peak = 0.0
         cpu_start = cpu_end = None
+        scaler = StreamScaler(cap)
         try:
             pool.add_streams(initial)
             probe.start()
@@ -349,12 +393,13 @@ class TestRunner:
                 if window_start is not None:
                     peak = max(peak, live)
 
-                # Add connections while the line is still ramping up. The decision
-                # uses the most recent half second, which is past the slow start.
+                # Add connections during the warm-up (see StreamScaler). Each
+                # decision uses the most recent half second, which is past the
+                # slow start of connections added a second earlier.
                 if (fixed is None and window_start is None and t >= 1.0
                         and t - last_scale >= SCALE_INTERVAL
                         and t <= WARMUP_MAX - SETTLE_AFTER_SCALE):
-                    wanted = min(cap, streams_for_speed(_recent_rate(samples, t, 0.5)))
+                    wanted = scaler.wanted(_recent_rate(samples, t, 0.5), pool.streams)
                     if wanted > pool.streams:
                         pool.add_streams(wanted - pool.streams)
                         last_scale = t
