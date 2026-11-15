@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 from naspeed import BETA, __version__, auth, cli, config  # noqa: E402
 from naspeed.api import App, strip_prefix  # noqa: E402
 from naspeed.config import Config, _checkout_root, build_parser, load_config  # noqa: E402
-from naspeed.engine import latency  # noqa: E402
+from naspeed.engine import cpu, latency  # noqa: E402
 from naspeed.engine.runner import TestError, _recent_rate, _resample, streams_for_speed  # noqa: E402
 from naspeed.httpd import Request  # noqa: E402
 from naspeed.providers import build_registry  # noqa: E402
@@ -361,6 +361,82 @@ class EngineMathTests(unittest.TestCase):
         series = [[i * 0.1, float(i)] for i in range(100)]
         self.assertEqual(len(_resample(series, 48)), 48)
         self.assertEqual(_resample(series[:5], 48), [0.0, 1.0, 2.0, 3.0, 4.0])
+
+
+class CpuLoadTests(unittest.TestCase):
+    """Processor use over a measurement window, from fake /proc and cgroup files."""
+
+    def reading(self, folder, name, cores, cgroup=None):
+        # cores: [(busy, idle), ...] in clock ticks, split over the /proc/stat columns.
+        def line(label, busy, idle):
+            return "%s %d 0 %d %d 0 0 0 0 0 0\n" % (label, busy - busy // 2, busy // 2, idle)
+        stat = os.path.join(folder, name + ".stat")
+        with open(stat, "w", encoding="ascii") as handle:
+            handle.write(line("cpu ", sum(b for b, _ in cores), sum(i for _, i in cores)))
+            for index, (busy, idle) in enumerate(cores):
+                handle.write(line("cpu%d" % index, busy, idle))
+            handle.write("intr 12345 0 0\nctxt 999\n")
+        files = []
+        if cgroup is not None:
+            files.append(os.path.join(folder, name + ".cgroup"))
+            with open(files[0], "w", encoding="ascii") as handle:
+                handle.write("".join("%s %d\n" % item for item in cgroup.items()))
+        return cpu.sample(stat, files)
+
+    def window(self, start_cores, end_cores, start_cgroup=None, end_cgroup=None, seconds=2.0):
+        with tempfile.TemporaryDirectory() as folder:
+            start = self.reading(folder, "start", start_cores, start_cgroup)
+            end = self.reading(folder, "end", end_cores, end_cgroup)
+        end.time = start.time + seconds
+        return cpu.summarize(start, end)
+
+    def test_an_idle_processor_does_not_limit_the_result(self):
+        load = self.window([(100, 900), (100, 900)], [(120, 1080), (110, 1090)])
+        self.assertEqual((load["busy"], load["peak_core"], load["cores"]), (7.5, 10.0, 2))
+        self.assertIsNone(load["limit"])
+        self.assertIsNone(load["app"])
+
+    def test_a_saturated_core_or_processor_is_reported(self):
+        core = self.window([(100, 900), (100, 900)], [(200, 900), (100, 1000)])
+        self.assertEqual((core["busy"], core["peak_core"], core["limit"]), (50.0, 100.0, "core"))
+        whole = self.window([(0, 0), (0, 0)], [(95, 5), (95, 5)])
+        self.assertEqual((whole["busy"], whole["limit"]), (95.0, "cpu"))
+
+    def test_platform_throttling_comes_first_and_service_use_is_in_cpus(self):
+        load = self.window(
+            [(0, 1000), (0, 1000)], [(100, 1000), (100, 1000)],
+            {"usage_usec": 1000000, "nr_periods": 100, "nr_throttled": 4},
+            {"usage_usec": 4000000, "nr_periods": 120, "nr_throttled": 6},
+        )
+        self.assertEqual((load["app"], load["throttled"], load["limit"]), (1.5, 10.0, "quota"))
+
+    def test_no_reading_without_proc_stat(self):
+        self.assertIsNone(cpu.sample(os.path.join(ROOT, "missing", "stat"), []))
+        self.assertIsNone(cpu.summarize(None, None))
+
+    def test_the_service_cgroup_is_found_in_v2_and_v1_layouts(self):
+        def found(proc, root):
+            return [os.path.normpath(path) for path in cpu._cgroup_stat_files(proc, root)]
+
+        with tempfile.TemporaryDirectory() as root:
+            for parts in (("system.slice", "naspeed.service"),
+                          ("cpu,cpuacct", "system.slice", "naspeed.service")):
+                os.makedirs(os.path.join(root, *parts))
+                with open(os.path.join(root, *parts, "cpu.stat"), "w", encoding="ascii") as handle:
+                    handle.write("usage_usec 1\n")
+            proc = os.path.join(root, "cgroup")
+            with open(proc, "w", encoding="ascii") as handle:
+                handle.write("0::/system.slice/naspeed.service\n")
+            self.assertEqual(found(proc, root),
+                             [os.path.join(root, "system.slice", "naspeed.service", "cpu.stat")])
+            with open(proc, "w", encoding="ascii") as handle:
+                handle.write("4:cpu,cpuacct:/system.slice/naspeed.service\n1:name=systemd:/\n0::/\n")
+            self.assertEqual(found(proc, root),
+                             [os.path.join(root, "cpu,cpuacct", "system.slice", "naspeed.service",
+                                           "cpu.stat")])
+            with open(proc, "w", encoding="ascii") as handle:
+                handle.write("0::/\n")
+            self.assertEqual(found(proc, root), [])
 
 
 class DevModeTests(unittest.TestCase):

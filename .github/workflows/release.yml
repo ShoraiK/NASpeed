@@ -101,6 +101,9 @@ jobs:
       - name: Run the tests
         run: python -m unittest discover -s tests
 
+      - name: Check web UI startup behavior
+        run: node tests/test_startup.js
+
       - name: Build the package
         run: python tools/build.py
 
@@ -122,6 +125,13 @@ jobs:
         run: |
           (cd dist && sha256sum "$DEB" > "$DEB.sha256")
           previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD 2> /dev/null || true)
+          # This version's section of CHANGELOG.md, without its heading or the blank
+          # lines around it. The build has already checked that the section exists.
+          changes=$(awk -v heading="## $VERSION" '
+            $0 == heading { found = 1; next }
+            /^## / { found = 0 }
+            found && (NF || started) { print; started = 1 }
+          ' CHANGELOG.md)
           {
             echo "Multi-provider speed test for TerraMaster TOS 7 (x86_64)."
             if [ "$BETA" = true ]; then
@@ -130,13 +140,14 @@ jobs:
             fi
             echo
             echo "Verify the download with \`sha256sum -c $DEB.sha256\`."
+            printf '\n### What is new in %s\n\n%s\n' "$VERSION" "$changes"
             if [ -n "$previous" ]; then
-              printf '\n### Changes since %s\n\n' "$previous"
+              printf '\n### Commits since %s\n\n' "$previous"
               git log --no-merges --format='- %s (%h)' "$previous..HEAD"
               printf '\n**Full changelog:** %s/%s/compare/%s...v%s\n' \
                 "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$previous" "$VERSION"
             else
-              printf '\n### Changes\n\n'
+              printf '\n### Commits\n\n'
               git log --no-merges --format='- %s (%h)'
             fi
           } > "$RUNNER_TEMP/release-notes.md"

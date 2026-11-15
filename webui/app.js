@@ -19,6 +19,7 @@
 
   var I18N = window.NASpeedI18n;
   var prefs = window.NASpeedPrefs;
+  var startup = window.NASpeedStartup;
   var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   var darkScheme = window.matchMedia("(prefers-color-scheme: dark)");
 
@@ -157,6 +158,16 @@
       return "—";
     }
     return number(value, value >= 100 ? 0 : 1);
+  }
+
+  function fmtPercent(value) {
+    if (!isNumber(value)) {
+      return "—";
+    }
+    if (!numberFormats["%"]) {
+      numberFormats["%"] = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 });
+    }
+    return numberFormats["%"].format(value / 100);
   }
 
   function fmtBytes(value) {
@@ -464,6 +475,7 @@
       streams: live.done ? live.streams_used : live.streams,
       bytes: live.bytes,
       latency: live.done ? live.latency : null,
+      cpu: (live.done && live.cpu) || null,
       done: !!live.done,
       measuring: !!live.measuring,
       points: points,
@@ -492,6 +504,7 @@
       streams: saved.streams,
       bytes: saved.bytes,
       latency: saved.latency,
+      cpu: saved.cpu || null,
       done: true,
       measuring: false,
       points: points,
@@ -581,6 +594,29 @@
         return !!part;
       })
       .join(" · ");
+  }
+
+  /* Why the NAS, rather than the line, may have set a result: the first reason
+     either direction reports. */
+  function cpuLimit(model) {
+    var directions = [model.down, model.up];
+    for (var i = 0; i < directions.length; i += 1) {
+      var load = directions[i] && directions[i].cpu;
+      if (load && load.limit && has("status.cpu." + load.limit)) {
+        return load.limit;
+      }
+    }
+    return null;
+  }
+
+  function cpuFacts(load) {
+    if (!load) {
+      return [];
+    }
+    return [
+      isNumber(load.busy) ? t("fact.cpu", { v: fmtPercent(load.busy) }) : "",
+      load.limit ? t("fact.limited") : ""
+    ];
   }
 
   /* ---- Numbers that ease towards their value ---------------------------- */
@@ -850,6 +886,10 @@
       title = fmtDate(model.ts);
       sub = joined([model.providerName, serverLine(model.server)]);
     }
+    var limit = model && model.status === "done" ? cpuLimit(model) : null;
+    if (limit) {
+      sub = joined([model.kind === "last" ? fmtDate(model.ts) : "", t("status.cpu." + limit)]);
+    }
     $("status-title").textContent = title;
     $("status-sub").textContent = sub;
     $("tile-status").dataset.tone = tone;
@@ -903,6 +943,7 @@
       if (isNumber(direction.latency)) {
         facts.push(t("fact.loaded", { v: fmtMs(direction.latency) }));
       }
+      facts = facts.concat(cpuFacts(direction.cpu).filter(Boolean));
     }
     setFacts(kind + "-facts", facts);
   }
@@ -1563,7 +1604,7 @@
       t("fact.peak", { v: fmtSpeed(direction.peak_mbps) }),
       direction.streams ? tn("fact.streams", direction.streams) : "",
       isNumber(direction.latency) ? t("fact.loaded", { v: fmtMs(direction.latency) }) : ""
-    ]);
+    ].concat(cpuFacts(direction.cpu)));
   }
 
   function fillPanel(bar, result) {
@@ -1746,7 +1787,11 @@
         "upload_bytes",
         "download_loaded_latency_ms",
         "upload_loaded_latency_ms",
-        "duration_s"
+        "duration_s",
+        "download_nas_cpu_percent",
+        "upload_nas_cpu_percent",
+        "download_nas_limit",
+        "upload_nas_limit"
       ]
     ];
     filteredHistory().forEach(function (result) {
@@ -1755,6 +1800,8 @@
       var ping = result.ping || {};
       var down = result.download || {};
       var up = result.upload || {};
+      var downCpu = down.cpu || {};
+      var upCpu = up.cpu || {};
       rows.push([
         isNumber(result.ts) ? new Date(result.ts * 1000).toISOString() : "",
         result.provider_name || result.provider,
@@ -1776,7 +1823,11 @@
         up.bytes,
         down.latency,
         up.latency,
-        result.duration
+        result.duration,
+        downCpu.busy,
+        upCpu.busy,
+        downCpu.limit,
+        upCpu.limit
       ]);
     });
     var csv = rows
@@ -2168,6 +2219,20 @@
     renderTest();
     api("GET", "/info")
       .then(function (info) {
+        if (!startup.isInfoResponse(info, APP_ID)) {
+          showGate("unexpected");
+          return null;
+        }
+        var refresh = startup.refreshForVersion(
+          info.version,
+          $("app").getAttribute("data-version")
+        );
+        if (refresh !== "current") {
+          if (refresh === "stale") {
+            showGate("outdated");
+          }
+          return null;
+        }
         state.info = info;
         state.settings = info.settings || {};
         state.providers = info.providers || [];
@@ -2186,6 +2251,9 @@
         return api("GET", "/state");
       })
       .then(function (live) {
+        if (!state.info) {
+          return null;
+        }
         if (live.running && live.test) {
           state.test = live.test;
           state.running = true;
@@ -2196,7 +2264,9 @@
       })
       .then(
         function () {
-          renderTest();
+          if (state.info) {
+            renderTest();
+          }
         },
         function () {
           if (!state.gate) {

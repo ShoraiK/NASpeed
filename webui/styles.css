@@ -693,12 +693,19 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
+.facts span {
+  white-space: nowrap;
+}
+
+/* Lines break only between facts, never inside one or before the dot. */
 .facts span + span::before {
-  content: " \00b7  ";
+  content: "\00a0\00b7  ";
+  white-space: normal;
 }
 
 .t-ping .facts span {
   display: block;
+  white-space: normal;
 }
 
 .t-ping .facts span + span::before {

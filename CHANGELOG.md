@@ -1,0 +1,51 @@
+# Changelog
+
+Notable changes in each NASpeed version, newest first. Every 0.x version is a beta.
+
+Each section opens with a one-line summary that the package build copies into the App Center release note, so keep that line plain text and no longer than 300 characters. The release workflow adds the whole section to the GitHub release notes, which turn every line break into a visible one, so write each paragraph and bullet on a single line.
+
+## 0.3.0
+
+Results now show the load on the NAS processor and warn when the NAS, rather than your line, may have limited the speed. Upgrades also refresh the interface reliably.
+
+- Each download and upload records the processor load during its measurement window: the whole processor, its busiest core and NASpeed's own share, plus how often the platform held NASpeed back where Linux reports it.
+- The result, the history and the command line warn when a saturated processor, a saturated core or a CPU quota may have kept the result below the line's speed. The CSV export gains the load and that reason per direction.
+- The interface checks that it is talking to the NASpeed service, and that both are the same version. After an upgrade it reloads once instead of running an outdated copy from the browser cache.
+- Upgrades replace the whole interface folder, so files removed from the interface no longer linger on the NAS.
+- The App Center listing describes NASpeed in each of its 26 languages, and its release note comes from this file.
+- Package builds are reproducible: every date inside the package comes from `SOURCE_DATE_EPOCH` or the last commit, so building the same commit again in the same environment gives the same bytes.
+- The tests run on every push to `main` and on every pull request, with Python 3.10 and the latest Python 3.
+- The details under each figure wrap between items instead of in the middle of one.
+
+## 0.2.2
+
+First package that installs on TOS 7. It fixes the service socket, refreshes the interface on upgrades and remembers your language and provider.
+
+- The service socket lives in `/usr/local/naspeed/run/` and is linked into `/var/api`, which only root can write, by a privileged step before the service starts. The unit no longer depends on a `naspeed` group, which TOS does not create.
+- Upgrades refresh the interface files: TOS only unpacks them on a fresh installation.
+- An expired TOS session shows a sign-in notice instead of a broken page.
+- The interface language and the provider of the last test are saved on the NAS. The first launch uses English and LibreSpeed.
+- Better scrolling inside the TOS window, clearer provider descriptions and clearer history controls.
+- 0.2.1 was never released; its fixes are part of this version.
+
+## 0.2.0
+
+First package published as a GitHub Release. It does not install on TOS 7, so use 0.2.2 or newer instead.
+
+- Pushing a raised version to `main` runs the tests, builds the `.deb` and publishes it as a GitHub Release with its SHA-256 checksum.
+- Known problem: the service unit requires a `naspeed` group and write access to `/var/api`, and a `chown` in the installation scripts fails, so the TOS App Center cannot install the package.
+
+## 0.1.1
+
+Groundwork for the TOS 7 package and better keyboard navigation. Never released.
+
+- An offline Debian package builder that also runs on Windows, with lifecycle scripts and package tests.
+- Keyboard navigation through the whole interface.
+
+## 0.1.0
+
+The first version of the service, the measurement engine, the four providers and the web interface. Never released.
+
+- Latency, download, upload and latency under load, measured the same way for every provider, with one worker process per TLS connection.
+- Cloudflare, Ookla, LibreSpeed and M-Lab NDT7 providers.
+- A JSON API tied to the TOS session, a web interface with test, history and settings in six languages, and a command line.

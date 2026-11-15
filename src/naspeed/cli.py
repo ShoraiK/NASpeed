@@ -138,4 +138,9 @@ def run(command, cfg, args):
         _out("%-9s %-12s peak %-12s %d conns, %.1f MB in %.1f s, loaded ping %s ms, errors %d" % (
             direction, _fmt_speed(data["mbps"]), _fmt_speed(data["peak_mbps"]), data["streams"],
             data["bytes"] / 1e6, data["seconds"], data["latency"], data["errors"]))
+        load = data.get("cpu")
+        if load:
+            _out("%-9s NAS CPU %s%%, busiest core %s%%%s" % (
+                "", load["busy"], "-" if load["peak_core"] is None else load["peak_core"],
+                "; the NAS may have limited this result (%s)" % load["limit"] if load["limit"] else ""))
     return 0

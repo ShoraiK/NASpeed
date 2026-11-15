@@ -1,7 +1,7 @@
 # Se sube el código de la aplicación y sus pruebas: src/, webui/, tests/ y
-# packaging/, más el README y la licencia de la raíz, y .github/ (capturas del
-# README y flujo de publicación). Todo lo demás se queda en local: documentación,
-# herramientas, datos de desarrollo y archivos generados.
+# packaging/, más el README, el CHANGELOG y la licencia de la raíz, y .github/
+# (capturas del README y flujos de CI y publicación). Todo lo demás se queda en
+# local: documentación, herramientas, datos de desarrollo y archivos generados.
 /*
 !/.gitignore
 !/.gitattributes
@@ -16,8 +16,10 @@
 # Herramientas locales, excepto el generador de paquetes que sí se versiona.
 # Dentro de las carpetas versionadas, lo que tampoco debe subir
 *.md
-# Excepción: el README de la raíz. Va después de *.md porque gana la última regla.
+# Excepción: el README y el CHANGELOG de la raíz. Van después de *.md porque gana la
+# última regla. El generador de paquetes saca del CHANGELOG la nota de versión.
 !/README.md
+!/CHANGELOG.md
 # Solo se versiona el generador de paquetes; las herramientas locales siguen fuera.
 /tools/*
 !/tools/build.py

@@ -29,7 +29,7 @@ from collections import deque
 from .. import __version__, log
 from ..providers.base import Context, ProviderError
 from ..store import CONNECTION_CHOICES, DURATIONS, IP_VERSIONS, new_id
-from . import latency, netutil
+from . import cpu, latency, netutil
 from .pool import TransferPool
 
 logger = log.get("runner")
@@ -325,6 +325,7 @@ class TestRunner:
         end = (0.0, 0)
         snap = None
         peak = 0.0
+        cpu_start = cpu_end = None
         try:
             pool.add_streams(initial)
             probe.start()
@@ -362,6 +363,7 @@ class TestRunner:
                 if window_start is None and snap.bytes > 0 and (t >= settle_until or t >= WARMUP_MAX):
                     window_start = end
                     probe.begin_window()
+                    cpu_start = cpu.sample()
 
                 if window_start is not None and t - window_start[0] >= 0.3:
                     average = (snap.bytes - window_start[1]) * 8 / (t - window_start[0]) / 1e6
@@ -397,6 +399,7 @@ class TestRunner:
                     raise TestError("no_data", snap.last_error)
                 if t >= WARMUP_MAX + window + 3.0:
                     break
+            cpu_end = cpu.sample()
         finally:
             pool.stop()
             self._pool = None
@@ -435,6 +438,9 @@ class TestRunner:
             "series": _resample(series, RESULT_SERIES_POINTS),
             "elapsed": round(end[0], 2),
             "warmup": round(window_start[0], 2) if measured else None,
+            # Processor use during the window: tells whether the NAS, rather
+            # than the line, may have set the speed.
+            "cpu": cpu.summarize(cpu_start, cpu_end) if measured else None,
         }
         if snap.info.get("min_rtt_ms") is not None:
             result["server_min_rtt_ms"] = snap.info["min_rtt_ms"]
@@ -444,6 +450,7 @@ class TestRunner:
                           "streams": 0, "streams_used": result["streams"],
                           "measuring": False, "done": True,
                           "latency": result["latency"], "peak_mbps": result["peak_mbps"],
-                          "elapsed": result["elapsed"], "window_start": result["warmup"]})
+                          "elapsed": result["elapsed"], "window_start": result["warmup"],
+                          "cpu": result["cpu"]})
             self._state["progress"] = self._progress(direction, 1.0)
         return result

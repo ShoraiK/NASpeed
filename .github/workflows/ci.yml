@@ -1,0 +1,60 @@
+# Runs the checks on every push to main and on every pull request, so a broken
+# change shows up before it reaches a release. Publishing stays in release.yml.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 is what TOS 7 ships and the minimum the code supports; the newest
+        # release catches deprecations early.
+        python: ["3.10", "3.x"]
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Run the tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Check web UI startup behavior
+        run: node tests/test_startup.js
+
+      - name: Check the web UI scripts parse
+        run: |
+          for file in webui/*.js; do
+            node --check "$file"
+          done
+
+      - name: Validate the package sources
+        run: python tools/build.py --validate-only

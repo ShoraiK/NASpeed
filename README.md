@@ -13,7 +13,7 @@ Measure the connection your TerraMaster NAS actually gets — not the one your b
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white">
   <img alt="Zero dependencies" src="https://img.shields.io/badge/dependencies-none-2fd08a?style=flat-square">
   <img alt="6 interface languages" src="https://img.shields.io/badge/UI%20languages-6-ffb52e?style=flat-square">
-  <img alt="Version 0.2.2 beta" src="https://img.shields.io/badge/version-0.2.2%20beta-fe7d37?style=flat-square">
+  <img alt="Version 0.3.0 beta" src="https://img.shields.io/badge/version-0.3.0%20beta-fe7d37?style=flat-square">
   <a href="LICENSE"><img alt="License: GPL-3.0-only" src="https://img.shields.io/badge/license-GPL--3.0--only-a32d2a?style=flat-square"></a>
 </p>
 
@@ -39,10 +39,10 @@ Measure the connection your TerraMaster NAS actually gets — not the one your b
 
 > [!IMPORTANT]
 > **Beta.** The backend and the web interface are complete, and the first installable TOS 7 package is
-> available on the [Releases page](https://github.com/ShoraiK/NASpeed/releases). It has been installed,
-> upgraded and used for real tests on one x86_64 TerraMaster NAS. Uninstalling, a NAS reboot and an expired TOS
-> session are still untested, so expect rough edges — see how to [install it](#install-on-tos-7-beta) and
-> the [roadmap](#roadmap).
+> available on the [Releases page](https://github.com/ShoraiK/NASpeed/releases). On one x86_64 TerraMaster NAS it
+> has been installed, upgraded, uninstalled and reinstalled, used for real tests and checked with an expired TOS
+> session. A NAS reboot is still untested, so expect rough edges — see how to [install it](#install-on-tos-7-beta)
+> and the [roadmap](#roadmap).
 
 > [!WARNING]
 > **Do not install version 0.2.0 on TOS 7.** Its package fails during installation. Download **0.2.2 or newer**
@@ -66,6 +66,7 @@ NASpeed runs the test **on the NAS itself**, so the numbers are the ones your NA
 - 🌐 **Four providers in one place.** Cloudflare, Ookla, LibreSpeed and M-Lab. Pick a provider — and, where supported, a server — for each test, and compare.
 - 📊 **The full picture.** Download, upload, idle latency, jitter and latency under load (bufferbloat), with live traces that show the warm-up apart from the measured window.
 - ⚡ **Built for fast lines.** Parallel connections scale with the speed observed, and every TLS connection gets its own worker process so Python's GIL does not cap multi-gigabit links.
+- 🩺 **Knows when the NAS is the bottleneck.** Every result records the processor load during the measurement and warns when a busy CPU or a CPU quota, not your line, may have held the speed back.
 - 🕘 **History you control.** Keep 10 to 1000 results, switch history off entirely, filter, delete or export to CSV.
 - 🎨 **Modern interface.** Light and dark themes, a layout that adapts to narrow windows and six languages: English, Español, Français, Deutsch, Português and 中文. Nothing is loaded from the internet — no CDNs, no web fonts.
 - 🔐 **Secure by design.** Access is tied to your TOS session; requests without one are rejected.
@@ -140,6 +141,7 @@ Every provider is measured with the **same method**, so results are comparable b
 | **Download / upload** | Bytes are counted over a fixed window of **5 s, 8 s or 15 s** (Quick, Standard, Long) per direction. Speed = bytes × 8 ÷ window length, in decimal Mb/s |
 | **Connections** | Scaled automatically with the speed observed — from 4 up to 32, within limits set by the NAS's CPU count — or fixed by you |
 | **Under load** | Latency keeps being sampled during the transfers, to expose bufferbloat |
+| **NAS load** | The processor is read at the start and end of each window: the whole CPU, its busiest core and NASpeed's own share. The result warns when the CPU reached 90 %, one core 95 %, or a CPU quota held NASpeed back in 5 % of scheduler periods |
 | **Payload** | Uploads send random, incompressible data |
 
 Numbers will not necessarily match a provider's own website, which uses its own method.
@@ -176,9 +178,11 @@ sha256sum -c naspeed_x86_64.deb.sha256   # check the download
 
 On Windows, compare the output of `Get-FileHash naspeed_x86_64.deb` with the hash in the `.sha256` file.
 
-Then open the **App Center** on the TOS desktop and install the `.deb` with its manual installation option. To upgrade, install a newer package the same way, on top of the installed one.
+Then open the **App Center** on the TOS desktop and install the `.deb` with its manual installation option. To upgrade, install a newer package the same way, on top of the installed one; your settings and history are kept.
 
-This is how the package has been installed and upgraded on a real NAS. TerraMaster also documents `sudo dpkg -i naspeed_x86_64.deb` over SSH for developers; that route has not been tested with NASpeed.
+To uninstall, open NASpeed from the App Center's **Installed** list and choose **Uninstall** in the menu next to **Open**. Leave the option to also delete the app's configuration files unticked to keep your settings and history: they stay on the NAS and come back if you reinstall — see [After uninstalling](#after-uninstalling). Ticking it is meant to delete them as well; that has not been tested yet.
+
+This is how the package has been installed, upgraded, uninstalled and reinstalled on a real NAS. TerraMaster also documents `sudo dpkg -i naspeed_x86_64.deb` over SSH for developers; that route has not been tested with NASpeed.
 
 ### Run the web UI
 
@@ -217,9 +221,12 @@ Run `python3 -m naspeed test --help` to see every option: server, duration, conn
 
 ```bash
 python3 -m unittest discover -s tests
+node tests/test_startup.js        # web UI startup checks, with Node.js
 ```
 
-The suite runs entirely offline: it needs no internet access and no real speed-test servers.
+The suite runs entirely offline: it needs no internet access and no real speed-test servers. The
+[CI workflow](.github/workflows/ci.yml) runs both on every push to `main` and every pull request, with Python 3.10
+and the latest Python 3, and also checks that the web UI scripts parse and the package sources are valid.
 
 > [!TIP]
 > A speed test moves a lot of data. A Quick test on a 1 Gb/s line transfers roughly 2 GB, and the volume grows with the line speed.
@@ -243,7 +250,8 @@ NASpeed/
 ├── tests/            Offline test suite
 ├── packaging/        TOS 7 service, lifecycle scripts and developer metadata
 ├── tools/build.py    Windows-capable TOS 7 .deb builder
-├── .github/          Release workflow and README screenshots (sample data)
+├── .github/          CI and release workflows, README screenshots (sample data)
+├── CHANGELOG.md      What changed in each version
 └── LICENSE           GNU General Public License v3.0
 ```
 
@@ -258,7 +266,8 @@ NASpeed/
 ## Permissions, ports and files
 
 What NASpeed needs on your NAS, and every file it writes there. This describes the TOS 7 package as
-installed and upgraded on a real NAS; what is left behind after uninstalling it has not been checked yet. Source development
+installed, upgraded and uninstalled on a real NAS. TOS installs apps on a storage volume and links them into
+`/usr/local`, so `/usr/local/naspeed` points to a folder such as `/Volume1/@apps/naspeed`. Source development
 mode (`--dev`) instead listens on loopback port `18321`, keeps application data in `.devdata/` inside the repository
 and writes no log file. Explicit command-line options and `NASPEED_*` environment variables can override paths.
 
@@ -271,6 +280,7 @@ and writes no log file. Explicit command-line options and `NASPEED_*` environmen
 | File system: `/usr/local/naspeed/data/` | Settings and test history |
 | File system: `/usr/local/naspeed/logs/` | Service log, rotated |
 | File system: `/usr/local/naspeed/run/` | Holds the socket the TOS proxy connects to |
+| File system: `/proc/stat` and the service's cgroup `cpu.stat`, read only | Processor load during a test, to tell when the NAS rather than the line may limit the result |
 | File system: `/var/api/naspeed.sock` | A symbolic link to that socket. `/var/api` is not writable by an unprivileged user on TOS, so the service creates the link with a privileged `ExecStartPre` step and removes it on stop |
 | User: `naspeed` (system user) | Isolated service execution — never `root` |
 | Shared folder: None | NASpeed never reads or writes your files |
@@ -299,22 +309,41 @@ Latency is sampled with plain TCP connections to the same server and port.
 | Path (relative to `/usr/local/naspeed/data/` unless noted) | Purpose | Format | Created when | Growth bound / rotation | Lifecycle |
 |---|---|---|---|---|---|
 | `/usr/local/naspeed/data/` | Container for settings and history | Directory | On start, if missing | Contents listed below | Persistent |
-| `settings.json` | Your settings — including the interface language and the provider of the last test — and the notices you accepted | JSON, mode `0600` | First time a setting changes (a test with another provider counts) or a notice is accepted | Typically under 1 KB; not a byte quota | Persistent — survives restart; intended to survive upgrade |
-| `history.json` | Saved test results | JSON, mode `0600` | First saved test, unless history is off; also when history is cleared | Capped by result count (10–1000, default 300), not bytes. Sample results average about 1.5 KB: roughly 0.5 MB for 300 or 1.5 MB for 1000; actual sizes vary | Persistent — delete entries or clear it from the History view |
+| `settings.json` | Your settings — including the interface language and the provider of the last test — and the notices you accepted | JSON, mode `0600` | First time a setting changes (a test with another provider counts) or a notice is accepted | Typically under 1 KB; not a byte quota | Persistent — survives restarts, upgrades and a normal uninstall |
+| `history.json` | Saved test results | JSON, mode `0600` | First saved test, unless history is off; also when history is cleared | Capped by result count (10–1000, default 300), not bytes. A result takes about 1.7 KB: roughly 0.5 MB for 300 or 1.7 MB for 1000; actual sizes vary | Persistent — survives upgrades and a normal uninstall; delete entries or clear it from the History view |
 | `<file>.tmp-<pid>` | Atomic write of `settings.json` or `history.json` | JSON | On every save | One per file being saved; renamed over the target at once | Temporary — leftovers from a crash are removed on start |
 | `<file>.corrupt` | An unreadable `settings.json` or `history.json`, set aside for inspection | As the original | Only if a file cannot be read | At most one per file; replaced if it happens again | Kept for inspection — safe to delete |
 | `/usr/local/naspeed/logs/` | Container for service logs | Directory | On start, if missing | Contents listed below | Persistent |
 | `/usr/local/naspeed/logs/naspeed.log` | Service log | Text: `[time] [level] [component] message` | On start | Rotated at 512 KiB, keeping 2 old files (`.1`, `.2`): about 1.5 MiB total | Persistent, rotated |
 | `/usr/local/naspeed/run/naspeed.sock` | Socket for the TOS platform proxy | Unix socket, mode `0660` | On start | N/A | Removed on stop; a stale one is replaced on start |
 | `/var/api/naspeed.sock` | Link the TOS proxy follows to the socket above | Symbolic link, created by root | On every service start | N/A | Removed on stop |
-| `/usr/local/naspeed/webui/` | The interface files that TOS serves at `/naspeed/` | Directory with six static files | Unpacked from `webui.bz2` by the platform on installation, and again by the package's `postinst` on every upgrade | Fixed, about 165 KB; rewritten on upgrade | Static between upgrades |
+| `/usr/local/naspeed/webui/` | The interface files that TOS serves at `/naspeed/` | Directory with seven static files | Unpacked from `webui.bz2` by the platform on installation, and again by the package's `postinst` on every upgrade | Fixed, about 169 KB; rewritten on upgrade | Static between upgrades; removed on uninstall |
 
 Inside TOS the platform, not the NASpeed service, serves the interface from that `webui/` folder. The platform only
-unpacks it on a fresh installation, which is why `postinst` refreshes it on upgrades. NASpeed creates no cache
+unpacks it on a fresh installation, which is why `postinst` refreshes it on upgrades. It sends those files without
+`Cache-Control`, so a browser may keep an old copy after an upgrade; the interface then notices that its version
+differs from the service's and reloads itself once. NASpeed creates no cache
 or files in `/tmp`, its measurement workers write no application data, and the command line keeps its results in
 memory. The service also logs to stdout, captured by the system journal under systemd. When running Python
 directly from source, Python may create ignored `__pycache__/` directories; set `PYTHONDONTWRITEBYTECODE=1` to
 disable them. The browser keeps only the theme and a copy of the language (to paint the first frame) in local storage.
+
+### After uninstalling
+
+Uninstalling from the App Center stops the service and removes its systemd unit, the program, the `webui/` folder,
+the `/usr/local/naspeed` link and the `/var/api/naspeed.sock` link. With the option to delete the configuration files
+unticked, the following stays in the app's folder on the volume, and a reinstall uses it again:
+
+| What stays | Why |
+|---|---|
+| `data/` | Your settings and history |
+| `logs/` | The service log |
+| `run/` | Empty: the socket is removed when the service stops |
+| `LICENSE` | The licence text, which the uninstaller leaves in place |
+| The `naspeed` system user | It keeps owning `data/` and `logs/`, and a reinstall reuses it |
+
+TOS keeps a few files of its own in the same folder, and `dpkg` lists NASpeed as removed with its configuration
+kept (`rc`).
 
 ## Roadmap
 
@@ -326,15 +355,18 @@ disable them. The browser keeps only the theme and a copy of the language (to pa
 - [x] Offline test suite
 - [x] Permission, port and runtime-file reference
 - [x] Installable `.deb` package for TOS 7, built and published automatically as a GitHub Release
-- [x] Installation, upgrade and real tests on a TerraMaster NAS, with the Python 3.10 that ships with TOS 7
-- [ ] Remaining hardware checks: uninstall, NAS reboot and an expired TOS session
+- [x] Installation, upgrade, uninstall and real tests on a TerraMaster NAS, with the Python 3.10 that ships with TOS 7
+- [x] Expired TOS sessions and outdated cached interfaces handled inside TOS
+- [x] Processor-load diagnostics: every result tells whether the NAS may have limited it
+- [x] Continuous integration and reproducible package builds
+- [ ] Remaining hardware check: a NAS reboot
 - [ ] Installation guide
 - [ ] Submission to the TerraMaster App Center
 
 ## Versioning
 
 NASpeed uses plain numeric `MAJOR.MINOR.PATCH` versions, the format the TOS App Center compares to offer updates.
-The current version is **0.2.2**, a beta.
+The current version is **0.3.0**, a beta. Every version is described in [CHANGELOG.md](CHANGELOG.md).
 
 - **0.x releases are betas.** Features, settings and the API may still change between them. Beta status is
   tracked separately, never as a `-beta` suffix, so every release remains a plain, comparable number.
@@ -345,14 +377,20 @@ The current version is **0.2.2**, a beta.
   [release workflow](.github/workflows/release.yml): it runs the tests, builds the `.deb` and publishes a
   GitHub Release tagged `vMAJOR.MINOR.PATCH` with the package and its SHA-256 checksum. The release is marked
   as a pre-release while `BETA` is `True` in the same file and becomes a regular release once it is `False`,
-  which is planned for 1.0.0. A version that already has a tag is never released twice.
+  which is planned for 1.0.0. A version that already has a tag is never released twice. The release notes start
+  with that version's section of [CHANGELOG.md](CHANGELOG.md), whose first line is also the App Center release note.
+- **Builds are reproducible.** Every date inside the package comes from the last commit, or from
+  `SOURCE_DATE_EPOCH` when it is set, so building a release's commit again in the same environment gives the
+  same bytes. A Python linked against a different zlib may compress them differently, but the files inside are
+  identical.
 - **Review the version before each commit and push of a change or batch.** Increment it when the changes
   warrant a new application version, not automatically for every commit. Use a patch increment for compatible
   fixes and usability or packaging improvements, and a minor increment for significant new functionality
   during the beta. Documentation-only changes, tests and internal refactors without observable changes
   normally do not require an increment.
-- When incrementing the version, update the source and this README together, verify that generated package
-  metadata and the executable report the same version, and explain the increment in the commit message.
+- When incrementing the version, update the source, this README and [CHANGELOG.md](CHANGELOG.md) together, verify
+  that generated package metadata and the executable report the same version, and explain the increment in the
+  commit message.
 
 ## Development notes
 

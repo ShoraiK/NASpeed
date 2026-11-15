@@ -4,14 +4,36 @@
 set -e
 
 APP_DIR="/usr/local/naspeed"
+WEBUI_DIR="${APP_DIR}/webui"
 
 # The platform only unpacks webui.bz2 on a fresh install, so an upgrade would
 # keep serving the previous interface. Refresh it when the folder already exists
-# (on a fresh install the platform creates it, so it is left alone). "-m" stamps
-# the files with the install time: the archive mtime is 0, and nginx builds its
-# ETag from mtime and size, so same-sized files would look unchanged to caches.
-if [ -d "${APP_DIR}/webui" ] && [ -f "${APP_DIR}/webui.bz2" ]; then
-    tar -xjmf "${APP_DIR}/webui.bz2" -C "${APP_DIR}/webui" || true
+# (on a fresh install the platform creates it, so it is left alone). The archive
+# is unpacked into a staging folder first: if that fails, the old interface stays
+# as it was. Otherwise webui/ ends up holding exactly the new files, so the ones
+# a version drops do not linger. "-m" stamps the files with the install time:
+# nginx builds its ETag from mtime and size, so same-sized files keeping the
+# archive's mtime could look unchanged to caches.
+refresh_webui() {
+    local staging entry
+    staging="$(mktemp -d "${APP_DIR}/.webui.XXXXXX")" || return 0
+    if tar -xjmf "${APP_DIR}/webui.bz2" -C "${staging}" && [ -f "${staging}/index.html" ]; then
+        shopt -s nullglob dotglob
+        for entry in "${WEBUI_DIR}"/*; do
+            if [ ! -e "${staging}/${entry##*/}" ] && { [ -f "${entry}" ] || [ -L "${entry}" ]; }; then
+                rm -f "${entry}"
+            fi
+        done
+        for entry in "${staging}"/*; do
+            mv -f "${entry}" "${WEBUI_DIR}/"
+        done
+        shopt -u nullglob dotglob
+    fi
+    rm -rf "${staging}"
+}
+
+if [ -d "${WEBUI_DIR}" ] && [ -f "${APP_DIR}/webui.bz2" ]; then
+    refresh_webui || true
 fi
 
 # The service starts through the TOS platform; a failing "systemctl" must never

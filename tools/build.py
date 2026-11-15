@@ -14,12 +14,13 @@ import os
 import pathlib
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
 import tempfile
 import time
-import zipapp
+import zipfile
 from urllib.parse import urlparse
 from xml.etree import ElementTree
 
@@ -34,10 +35,41 @@ LANGUAGES = (
 )
 REQUIRED_LANGUAGES = LANGUAGES[:14]
 LANGUAGE_FIELDS = ("name", "auth", "descript", "release_note", "important")
+# The App Center shows this line under the app name, in the language TOS is set to.
+STORE_DESCRIPTIONS = {
+    "zh-cn": "使用 Cloudflare、Ookla、LibreSpeed 或 M-Lab 测试 NAS 的网速。",
+    "zh-hk": "使用 Cloudflare、Ookla、LibreSpeed 或 M-Lab 測試 NAS 的網速。",
+    "en-us": "Test the internet speed of your NAS with Cloudflare, Ookla, LibreSpeed or M-Lab.",
+    "ko-kr": "Cloudflare, Ookla, LibreSpeed 또는 M-Lab으로 NAS의 인터넷 속도를 측정합니다.",
+    "ja-jp": "Cloudflare、Ookla、LibreSpeed、M-Lab を使って NAS のインターネット速度を測定します。",
+    "de-de": "Messen Sie die Internetgeschwindigkeit Ihres NAS mit Cloudflare, Ookla, LibreSpeed oder M-Lab.",
+    "fr-fr": "Mesurez le débit Internet de votre NAS avec Cloudflare, Ookla, LibreSpeed ou M-Lab.",
+    "it-it": "Misura la velocità di Internet del tuo NAS con Cloudflare, Ookla, LibreSpeed o M-Lab.",
+    "es-es": "Mide la velocidad de Internet de tu NAS con Cloudflare, Ookla, LibreSpeed o M-Lab.",
+    "hu-hu": "Mérje meg a NAS internetsebességét a Cloudflare, az Ookla, a LibreSpeed vagy az M-Lab segítségével.",
+    "pl-pl": "Zmierz prędkość internetu swojego serwera NAS za pomocą Cloudflare, Ookla, LibreSpeed lub M-Lab.",
+    "tr-tr": "NAS'ınızın internet hızını Cloudflare, Ookla, LibreSpeed veya M-Lab ile ölçün.",
+    "ru-ru": "Измеряйте скорость интернета на своём NAS с помощью Cloudflare, Ookla, LibreSpeed или M-Lab.",
+    "pt-pt": "Meça a velocidade da Internet do seu NAS com Cloudflare, Ookla, LibreSpeed ou M-Lab.",
+    "cs-cz": "Změřte rychlost internetu svého NAS pomocí Cloudflare, Ookla, LibreSpeed nebo M-Lab.",
+    "da-dk": "Mål internethastigheden på din NAS med Cloudflare, Ookla, LibreSpeed eller M-Lab.",
+    "nl-nl": "Meet de internetsnelheid van je NAS met Cloudflare, Ookla, LibreSpeed of M-Lab.",
+    "nb-no": "Mål internetthastigheten til NAS-en din med Cloudflare, Ookla, LibreSpeed eller M-Lab.",
+    "sv-se": "Mät internethastigheten på din NAS med Cloudflare, Ookla, LibreSpeed eller M-Lab.",
+    "el-gr": "Μετρήστε την ταχύτητα του Internet στο NAS σας με Cloudflare, Ookla, LibreSpeed ή M-Lab.",
+    "ro-ro": "Măsurați viteza internetului pe NAS-ul dvs. cu Cloudflare, Ookla, LibreSpeed sau M-Lab.",
+    "th-th": "วัดความเร็วอินเทอร์เน็ตของ NAS ด้วย Cloudflare, Ookla, LibreSpeed หรือ M-Lab",
+    "vi-vn": "Đo tốc độ Internet của NAS bằng Cloudflare, Ookla, LibreSpeed hoặc M-Lab.",
+    "id-id": "Ukur kecepatan internet NAS Anda dengan Cloudflare, Ookla, LibreSpeed, atau M-Lab.",
+    "ar-sa": "قم بقياس سرعة الإنترنت في جهاز NAS باستخدام Cloudflare أو Ookla أو LibreSpeed أو M-Lab.",
+    "he-il": "מדדו את מהירות האינטרנט של ה-NAS שלכם באמצעות Cloudflare, Ookla, LibreSpeed או M-Lab.",
+}
+RELEASE_NOTE_LIMIT = 300
 DESCRIPTION = "Multi-provider speed test for TerraMaster TOS"
 ARCHIVE_ENTRY = """from naspeed.__main__ import main
 raise SystemExit(main())
 """
+ZIP_EPOCH = 315532800  # 1980-01-01 UTC, the earliest date a ZIP entry can hold
 REQUIRED_CONFIG = {
     "id": str,
     "icon": str,
@@ -170,7 +202,7 @@ def _validate_package_sources(root: pathlib.Path = ROOT) -> tuple[str, bool, byt
     webui = root / "webui"
     if icon != (webui / "favicon.svg").read_bytes():
         raise BuildError("Keep packaging/images/icons/naspeed.svg in sync with webui/favicon.svg.")
-    required = ("index.html", "app.js", "i18n.js", "prefs.js", "styles.css", "favicon.svg")
+    required = ("index.html", "startup.js", "app.js", "i18n.js", "prefs.js", "styles.css", "favicon.svg")
     missing = [name for name in required if not (webui / name).is_file()]
     if missing:
         raise BuildError("Missing web UI files: %s." % ", ".join(missing))
@@ -193,7 +225,25 @@ def _validate_package_sources(root: pathlib.Path = ROOT) -> tuple[str, bool, byt
             raise BuildError("Systemd unit is missing required directive: %s." % directive)
     if re.search(r"^Restart(?:Sec)?\s*=", service_text, re.M):
         raise BuildError("Do not set Restart or RestartSec; TOS manages service restarts.")
+    _release_note(root, version)
     return version, beta, icon
+
+
+def _release_note(root: pathlib.Path, version: str) -> str:
+    """The one-line summary that opens this version's section in CHANGELOG.md."""
+    try:
+        lines = [line.strip() for line in
+                 (root / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()]
+    except OSError as exc:
+        raise BuildError("CHANGELOG.md could not be read: %s." % exc) from exc
+    heading = "## " + version
+    if heading in lines:
+        summary = next((line for line in lines[lines.index(heading) + 1:] if line), "")
+        if summary and not summary.startswith(("#", "-", "*")) \
+                and len(summary) <= RELEASE_NOTE_LIMIT:
+            return summary
+    raise BuildError("CHANGELOG.md needs a '%s' section that opens with a one-line summary "
+                     "of up to %d characters." % (heading, RELEASE_NOTE_LIMIT))
 
 
 def _validate_version_progress(root: pathlib.Path, version: str) -> None:
@@ -260,18 +310,19 @@ def _quote_lang(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def _language_file(publisher: str, version: str) -> bytes:
-    fields = {
-        "name": "NASpeed",
-        "auth": publisher.strip(),
-        "descript": "Internet speed test with Cloudflare, Ookla, LibreSpeed and M-Lab.",
-        "release_note": "%s beta build." % version,
-        "important": "",
-    }
-    if any(not fields[key] for key in ("name", "auth", "descript")):
-        raise BuildError("name, auth and descript must not be empty in every language.")
+def _language_file(publisher: str, release_note: str) -> bytes:
     lines = []
     for language in LANGUAGES:
+        fields = {
+            "name": "NASpeed",
+            "auth": publisher.strip(),
+            "descript": STORE_DESCRIPTIONS.get(language, ""),
+            # CHANGELOG.md is only kept in English.
+            "release_note": release_note,
+            "important": "",
+        }
+        if any(not fields[key] for key in ("name", "auth", "descript")):
+            raise BuildError("name, auth and descript must not be empty in every language.")
         lines.append("[%s]" % language)
         lines.extend("%s = %s" % (key, _quote_lang(fields[key])) for key in LANGUAGE_FIELDS)
         lines.append("")
@@ -297,7 +348,7 @@ def _control_file(metadata: dict, version: str) -> bytes:
     return text.encode("utf-8")
 
 
-def _webui_archive(root: pathlib.Path, version: str) -> bytes:
+def _webui_archive(root: pathlib.Path, version: str, timestamp: int) -> bytes:
     stream = io.BytesIO()
     with tarfile.open(fileobj=stream, mode="w:bz2", format=tarfile.USTAR_FORMAT) as archive:
         files = sorted(path for path in (root / "webui").iterdir() if path.is_file())
@@ -312,27 +363,45 @@ def _webui_archive(root: pathlib.Path, version: str) -> bytes:
             info.mode = 0o644
             info.uid = info.gid = 0
             info.uname = info.gname = "root"
-            info.mtime = 0
+            info.mtime = timestamp
             archive.addfile(info, io.BytesIO(data))
     return stream.getvalue()
 
 
-def _zipapp(root: pathlib.Path, destination: pathlib.Path) -> None:
-    with tempfile.TemporaryDirectory(prefix="naspeed-zipapp-") as temp:
-        package_root = pathlib.Path(temp)
-        shutil.copytree(
-            root / "src" / APP_ID,
-            package_root / APP_ID,
-            ignore=shutil.ignore_patterns("__pycache__", "*.py[cod]"),
-        )
-        for path in (package_root / APP_ID).rglob("*.py"):
-            data = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
-            path.write_bytes(data)
-        with (package_root / "__main__.py").open("w", encoding="utf-8", newline="\n") as handle:
-            handle.write(ARCHIVE_ENTRY)
-        zipapp.create_archive(
-            str(package_root), str(destination), interpreter="/usr/bin/python3", compressed=True
-        )
+def _zip_info(name: str, timestamp: int, mode: int) -> zipfile.ZipInfo:
+    info = zipfile.ZipInfo(name, date_time=time.gmtime(max(timestamp, ZIP_EPOCH))[:6])
+    info.create_system = 3  # Unix, also when building on Windows
+    info.external_attr = mode << 16
+    if name.endswith("/"):
+        info.external_attr |= 0x10  # MS-DOS directory flag
+    else:
+        info.compress_type = zipfile.ZIP_DEFLATED
+    return info
+
+
+def _zipapp(root: pathlib.Path, destination: pathlib.Path, timestamp: int) -> None:
+    # Same layout as zipapp.create_archive, but the dates and modes of the
+    # entries are fixed instead of copied from the build machine.
+    source = root / "src" / APP_ID
+    entries = {"__main__.py": ARCHIVE_ENTRY.encode("utf-8"), APP_ID + "/": None}
+    for path in source.rglob("*"):
+        relative = path.relative_to(source.parent)
+        if "__pycache__" in relative.parts or path.suffix in (".pyc", ".pyo", ".pyd"):
+            continue
+        if path.is_dir():
+            entries[relative.as_posix() + "/"] = None
+            continue
+        data = path.read_bytes()
+        if path.suffix == ".py":
+            data = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+        entries[relative.as_posix()] = data
+    with destination.open("wb") as handle:
+        handle.write(b"#!/usr/bin/python3\n")
+        with zipfile.ZipFile(handle, "w") as archive:
+            for name in sorted(entries, key=lambda item: item.rstrip("/").split("/")):
+                data = entries[name]
+                mode = stat.S_IFDIR | 0o755 if data is None else stat.S_IFREG | 0o644
+                archive.writestr(_zip_info(name, timestamp, mode), data or b"")
     destination.chmod(0o755)
     result = subprocess.run(
         [sys.executable, "-I", str(destination), "--version"],
@@ -343,7 +412,7 @@ def _zipapp(root: pathlib.Path, destination: pathlib.Path) -> None:
         raise BuildError("The generated zipapp failed its --version smoke test: %s" % result.stderr)
 
 
-def _tar_gz(paths: list[tuple[pathlib.Path, str]]) -> bytes:
+def _tar_gz(paths: list[tuple[pathlib.Path, str]], timestamp: int) -> bytes:
     # Same layout as dpkg-deb: GNU tar, "./"-prefixed names and a "./" root entry.
     output = io.BytesIO()
     with gzip.GzipFile(fileobj=output, mode="wb", filename="", mtime=0) as compressed:
@@ -362,27 +431,45 @@ def _tar_gz(paths: list[tuple[pathlib.Path, str]]) -> bytes:
                 info.size = len(data)
                 info.uid = info.gid = 0
                 info.uname = info.gname = "root"
-                info.mtime = 0
+                info.mtime = timestamp
                 archive.addfile(info, io.BytesIO(data) if data else None)
     packed = bytearray(output.getvalue())
     packed[9] = 3  # gzip OS field: Unix, as written by dpkg-deb
     return bytes(packed)
 
 
-def _build_timestamp() -> int:
+def _build_timestamp(root: pathlib.Path = ROOT) -> int:
+    """The date given to every file in the package.
+
+    SOURCE_DATE_EPOCH when set, else the date of the last commit, so building
+    the same commit twice gives the same bytes.
+    """
+    value = os.environ.get("SOURCE_DATE_EPOCH", "").strip()
+    if value:
+        if not value.isdigit():
+            raise BuildError("SOURCE_DATE_EPOCH must be a whole number of seconds.")
+        return int(value)
     try:
-        return int(os.environ["SOURCE_DATE_EPOCH"])
-    except (KeyError, ValueError):
-        return int(time.time())
+        result = subprocess.run(
+            ["git", "-C", str(root), "log", "-1", "--format=%ct"],
+            check=False, capture_output=True, text=True,
+        )
+    except OSError:
+        result = None
+    if result is not None and not result.returncode and result.stdout.strip().isdigit():
+        return int(result.stdout.strip())
+    print("Warning: the date of the last commit could not be read; the package "
+          "carries the current time and will not be reproducible.", file=sys.stderr)
+    return int(time.time())
 
 
-def _ar_member(name: str, payload: bytes) -> bytes:
+def _ar_member(name: str, payload: bytes, timestamp: int) -> bytes:
     # dpkg-deb names members without the GNU "/" terminator.
     if len(name) > 16 or "/" in name:
         raise BuildError("Invalid ar member name: %s." % name)
     header = (
         name.ljust(16)
-        + str(_build_timestamp()).ljust(12)
+        + str(timestamp).ljust(12)
         + "0".ljust(6)
         + "0".ljust(6)
         + "100644".ljust(8)
@@ -394,11 +481,11 @@ def _ar_member(name: str, payload: bytes) -> bytes:
     return header.encode("ascii") + payload + (b"\n" if len(payload) % 2 else b"")
 
 
-def _write_ar(destination: pathlib.Path, members: list[tuple[str, bytes]]) -> None:
+def _write_ar(destination: pathlib.Path, members: list[tuple[str, bytes]], timestamp: int) -> None:
     with destination.open("wb") as output:
         output.write(b"!<arch>\n")
         for name, payload in members:
-            output.write(_ar_member(name, payload))
+            output.write(_ar_member(name, payload, timestamp))
 
 
 def build_package(
@@ -412,6 +499,7 @@ def build_package(
     _validate_version_progress(root, version)
     metadata = _load_metadata(root) if metadata is None else metadata
     _validate_metadata(metadata)
+    timestamp = _build_timestamp(root)
 
     with tempfile.TemporaryDirectory(prefix="naspeed-build-") as temp:
         staging = pathlib.Path(temp)
@@ -426,10 +514,10 @@ def build_package(
             directory.mkdir(parents=True, exist_ok=True)
 
         executable = payload_root / "bin" / APP_ID
-        _zipapp(root, executable)
+        _zipapp(root, executable, timestamp)
         (payload_root / "config.ini").write_bytes(_config(metadata, version, beta))
         (payload_root / "naspeed.lang").write_bytes(
-            _language_file(metadata["publisher"], version)
+            _language_file(metadata["publisher"], _release_note(root, version))
         )
         (payload_root / "images" / "icons" / "naspeed.svg").write_bytes(icon)
         shutil.copyfile(root / "packaging" / "init.d" / "naspeed.service",
@@ -438,7 +526,7 @@ def build_package(
         service_path.write_bytes(
             service_path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
         )
-        (payload_root / "webui.bz2").write_bytes(_webui_archive(root, version))
+        (payload_root / "webui.bz2").write_bytes(_webui_archive(root, version, timestamp))
         shutil.copyfile(root / "LICENSE", payload_root / "LICENSE")
 
         (control_root / "control").write_bytes(_control_file(metadata, version))
@@ -449,12 +537,12 @@ def build_package(
             destination.write_bytes(source.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n"))
             control_paths.append((destination, script))
         control_paths.append((control_root / "control", "control"))
-        control_tar = _tar_gz(control_paths)
+        control_tar = _tar_gz(control_paths, timestamp)
         data_paths = [
             (path, path.relative_to(staging / "data").as_posix())
             for path in (staging / "data").rglob("*")
         ]
-        data_tar = _tar_gz(data_paths)
+        data_tar = _tar_gz(data_paths, timestamp)
         for name in ("config.ini", "naspeed.lang", "images/icons/naspeed.svg", "webui.bz2"):
             packaged_file = payload_root / name
             if packaged_file.stat().st_size > 1024 * 1024:
@@ -467,7 +555,7 @@ def build_package(
                 ("debian-binary", b"2.0\n"),
                 ("control.tar.gz", control_tar),
                 ("data.tar.gz", data_tar),
-            ])
+            ], timestamp)
             if temporary_output.stat().st_size > 2 * 1024 * 1024 * 1024:
                 raise BuildError("The package exceeds the 2 GiB platform limit.")
             temporary_output.replace(destination)

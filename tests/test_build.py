@@ -14,6 +14,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+import zipfile
 from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -91,10 +92,11 @@ class PackageBuildTests(unittest.TestCase):
             build._validate_version_progress(root, "0.1.1")
 
     def test_language_file_has_all_platform_sections_and_required_fields(self):
-        content = build._language_file("NASpeed test publisher", "0.1.0").decode("utf-8")
+        content = build._language_file("NASpeed test publisher", "Faster upgrades.").decode("utf-8")
         sections = [line[1:-1] for line in content.splitlines() if line.startswith("[")]
         self.assertEqual(sections, list(build.LANGUAGES))
         self.assertEqual(sections[:14], list(build.REQUIRED_LANGUAGES))
+        descriptions = set()
         for section in content.split("\n\n"):
             values = dict(
                 line.split(" = ", 1) for line in section.splitlines()[1:] if " = " in line
@@ -102,6 +104,25 @@ class PackageBuildTests(unittest.TestCase):
             for key in ("name", "auth", "descript"):
                 self.assertIn(key, values)
                 self.assertNotEqual(values[key], '""')
+            for provider in ("Cloudflare", "Ookla", "LibreSpeed", "M-Lab"):
+                self.assertIn(provider, values["descript"])
+            self.assertEqual(values["release_note"], '"Faster upgrades."')
+            descriptions.add(values["descript"])
+        self.assertEqual(len(descriptions), len(build.LANGUAGES))
+
+    def test_release_note_is_the_summary_line_of_the_version_in_the_changelog(self):
+        self.assertTrue(build._release_note(ROOT, __version__))
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            changelog = root / "CHANGELOG.md"
+            changelog.write_text(
+                "# Changelog\n\n## 1.1.0\n\n- Only a list.\n\n## 1.0.0\n\nFirst release.\n\n- More.\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(build._release_note(root, "1.0.0"), "First release.")
+            for version in ("1.1.0", "1.2.0"):
+                with self.assertRaisesRegex(build.BuildError, "## %s" % version):
+                    build._release_note(root, version)
 
     def test_package_is_a_valid_single_package_deb_with_expected_payload(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -137,6 +158,11 @@ class PackageBuildTests(unittest.TestCase):
                     index = webui.extractfile("index.html").read()
                     self.assertNotIn(b"__VERSION__", index)
                     self.assertIn(__version__.encode("ascii"), index)
+                    startup_script = b"startup.js?v=" + __version__.encode("ascii")
+                    app_script = b"app.js?v=" + __version__.encode("ascii")
+                    self.assertLess(index.index(startup_script), index.index(app_script))
+                    startup = webui.extractfile("startup.js").read()
+                    self.assertIn(b"function refreshForVersion", startup)
                 executable = pathlib.Path(temp) / "naspeed"
                 executable.write_bytes(archive.extractfile(prefix + "bin/naspeed").read())
                 result = subprocess.run(
@@ -161,13 +187,37 @@ class PackageBuildTests(unittest.TestCase):
                     member = archive.getmember("./" + script)
                     self.assertEqual((member.uid, member.gid, member.mode), (0, 0, 0o755))
 
+    def test_building_the_same_sources_twice_gives_the_same_bytes(self):
+        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second, \
+                mock.patch.dict(os.environ, {"SOURCE_DATE_EPOCH": "1700000000"}):
+            destination = build_deb(first)
+            package = destination.read_bytes()
+            self.assertEqual(build_deb(second).read_bytes(), package)
+            members = read_ar(destination)
+        self.assertEqual(package[8 + 16:8 + 28].strip(), b"1700000000")
+        with tarfile.open(fileobj=io.BytesIO(members["data.tar.gz"]), mode="r:gz") as archive:
+            self.assertEqual({member.mtime for member in archive.getmembers()}, {1700000000})
+            executable = archive.extractfile("./usr/local/naspeed/bin/naspeed").read()
+            webui = archive.extractfile("./usr/local/naspeed/webui.bz2").read()
+        with tarfile.open(fileobj=io.BytesIO(webui), mode="r:bz2") as archive:
+            self.assertEqual({member.mtime for member in archive.getmembers()}, {1700000000})
+        with zipfile.ZipFile(io.BytesIO(executable)) as archive:
+            entries = archive.infolist()
+        self.assertEqual({entry.date_time for entry in entries}, {(2023, 11, 14, 22, 13, 20)})
+        self.assertEqual({entry.create_system for entry in entries}, {3})
+        self.assertEqual({entry.external_attr >> 16 for entry in entries if not entry.is_dir()},
+                         {0o100644})
+        with mock.patch.dict(os.environ, {"SOURCE_DATE_EPOCH": "yesterday"}):
+            with self.assertRaisesRegex(build.BuildError, "SOURCE_DATE_EPOCH"):
+                build._build_timestamp(ROOT)
+
     @unittest.skipUnless(
         os.name == "posix" and all(shutil.which(tool) for tool in ("bash", "tar", "bzip2")),
         "the install script needs bash, tar and bzip2",
     )
     def test_postinst_refreshes_the_web_interface_only_on_upgrade(self):
         script = (ROOT / "packaging" / "DEBIAN" / "postinst").read_text(encoding="utf-8")
-        archive = build._webui_archive(ROOT, "9.9.9")
+        archive = build._webui_archive(ROOT, "9.9.9", 0)
         with tempfile.TemporaryDirectory() as temp:
             temp = pathlib.Path(temp)
             stubs = temp / "stubs"
@@ -185,11 +235,16 @@ class PackageBuildTests(unittest.TestCase):
             upgrade = temp / "upgrade"
             (upgrade / "webui").mkdir(parents=True)
             (upgrade / "webui" / "index.html").write_bytes(b"old")
+            (upgrade / "webui" / "dropped.js").write_bytes(b"from an older version")
             (upgrade / "webui.bz2").write_bytes(archive)
             self.assertEqual(run_postinst(upgrade).returncode, 0)
             index = upgrade / "webui" / "index.html"
             self.assertIn(b"9.9.9", index.read_bytes())
             self.assertGreater(index.stat().st_mtime, 86400)
+            with tarfile.open(fileobj=io.BytesIO(archive), mode="r:bz2") as webui:
+                shipped = sorted(webui.getnames())
+            self.assertEqual(sorted(path.name for path in (upgrade / "webui").iterdir()), shipped)
+            self.assertEqual(sorted(path.name for path in upgrade.iterdir()), ["webui", "webui.bz2"])
 
             fresh = temp / "fresh"
             fresh.mkdir()
@@ -199,8 +254,14 @@ class PackageBuildTests(unittest.TestCase):
 
             broken = temp / "broken"
             (broken / "webui").mkdir(parents=True)
+            (broken / "webui" / "index.html").write_bytes(b"old")
+            (broken / "webui" / "app.js").write_bytes(b"old")
             (broken / "webui.bz2").write_bytes(b"not a bzip2 archive")
             self.assertEqual(run_postinst(broken).returncode, 0)
+            self.assertEqual(sorted(path.name for path in (broken / "webui").iterdir()),
+                             ["app.js", "index.html"])
+            self.assertEqual((broken / "webui" / "index.html").read_bytes(), b"old")
+            self.assertEqual(sorted(path.name for path in broken.iterdir()), ["webui", "webui.bz2"])
 
     def test_source_validation_passes_without_developer_metadata(self):
         version, beta, icon = build._validate_package_sources(ROOT)
