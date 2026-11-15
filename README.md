@@ -39,9 +39,14 @@ Measure the connection your TerraMaster NAS actually gets — not the one your b
 
 > [!IMPORTANT]
 > **Beta.** The backend and the web interface are complete, and the first installable TOS 7 package is
-> available on the [Releases page](https://github.com/ShoraiK/NASpeed/releases). It has not been validated on
-> real TerraMaster hardware yet, so expect rough edges — see how to [install it](#install-on-tos-7-beta) and
+> available on the [Releases page](https://github.com/ShoraiK/NASpeed/releases). It has been installed,
+> upgraded and used for real tests on one x86_64 TerraMaster NAS. Uninstalling, a NAS reboot and an expired TOS
+> session are still untested, so expect rough edges — see how to [install it](#install-on-tos-7-beta) and
 > the [roadmap](#roadmap).
+
+> [!WARNING]
+> **Do not install version 0.2.0 on TOS 7.** Its package fails during installation. Download **0.2.2 or newer**
+> from the Releases page instead.
 
 ## Why NASpeed?
 
@@ -118,7 +123,7 @@ flowchart LR
     engine -->|"TCP / TLS"| servers
 ```
 
-- **Web UI** — static HTML, CSS and JS served by the service itself. Designed to open as a window inside the TOS 7 desktop.
+- **Web UI** — static HTML, CSS and JS with no build step. Inside TOS 7 the platform serves the files and the page opens as a window on the desktop; when you run NASpeed from source, the service serves them itself.
 - **Service** — a small Python HTTP server (standard library only). On the NAS it listens on a Unix socket behind the platform proxy; it can also listen on a TCP port, which is how you run it from source.
 - **Engine** — runs one test at a time. The main process only coordinates and samples latency; the data itself moves through worker processes (TLS) or threads (plain HTTP), so the measurement never starves the coordinator.
 - **Live progress** — the UI polls the service about ten times per second.
@@ -163,14 +168,17 @@ The provider is remembered when a test starts, not merely when its tile is selec
 
 ### Install on TOS 7 (beta)
 
-NASpeed is not in the TerraMaster App Center yet. Download `naspeed_x86_64.deb` and `naspeed_x86_64.deb.sha256` from the [Releases page](https://github.com/ShoraiK/NASpeed/releases) to the NAS and, from an SSH session in that folder, run:
+NASpeed is not in the TerraMaster App Center yet. Download `naspeed_x86_64.deb` and `naspeed_x86_64.deb.sha256` from the [Releases page](https://github.com/ShoraiK/NASpeed/releases) and check the download on your computer. On Linux or WSL:
 
 ```bash
 sha256sum -c naspeed_x86_64.deb.sha256   # check the download
-sudo dpkg -i naspeed_x86_64.deb          # install the package
 ```
 
-This is the manual installation TerraMaster documents for testing apps. The package has not been validated on real TerraMaster hardware yet.
+On Windows, compare the output of `Get-FileHash naspeed_x86_64.deb` with the hash in the `.sha256` file.
+
+Then open the **App Center** on the TOS desktop and install the `.deb` with its manual installation option. To upgrade, install a newer package the same way, on top of the installed one.
+
+This is how the package has been installed and upgraded on a real NAS. TerraMaster also documents `sudo dpkg -i naspeed_x86_64.deb` over SSH for developers; that route has not been tested with NASpeed.
 
 ### Run the web UI
 
@@ -243,14 +251,14 @@ NASpeed/
 
 - **Tied to your TOS session.** On the NAS the service listens on a Unix socket (mode `0660`) reachable only through the platform proxy. Every request must carry a valid session cookie and a matching CSRF token, or it is rejected with `401`.
 - **Careful on TCP.** When it listens on a TCP port — as in development mode — it only answers clients on local or private networks, and only for local host names, which guards against DNS rebinding. Requests that change state need a custom header and no foreign `Origin`, which guards against cross-site requests.
-- **Hardened static files.** The interface is served with a Content-Security-Policy and `X-Content-Type-Options: nosniff`, and path traversal is blocked.
+- **Hardened static files.** When the service serves the interface itself — in development mode or on a TCP port — it adds a Content-Security-Policy and `X-Content-Type-Options: nosniff`, and blocks path traversal. Inside TOS the platform's own web server serves the interface files, with its own headers.
 - **No telemetry, no third-party resources.** NASpeed connects only to the provider you pick and its test servers. The interface loads nothing from the internet.
 - **Private data.** Settings and history are written atomically with `0600` permissions. History can be capped, switched off or deleted at any time.
 
 ## Permissions, ports and files
 
-What NASpeed needs on your NAS, and every file it writes there. This describes the TOS 7 package; the service
-user and upgrade/purge behavior still need validation on real hardware. Source development
+What NASpeed needs on your NAS, and every file it writes there. This describes the TOS 7 package as
+installed and upgraded on a real NAS; what is left behind after uninstalling it has not been checked yet. Source development
 mode (`--dev`) instead listens on loopback port `18321`, keeps application data in `.devdata/` inside the repository
 and writes no log file. Explicit command-line options and `NASPEED_*` environment variables can override paths.
 
@@ -299,8 +307,10 @@ Latency is sampled with plain TCP connections to the same server and port.
 | `/usr/local/naspeed/logs/naspeed.log` | Service log | Text: `[time] [level] [component] message` | On start | Rotated at 512 KiB, keeping 2 old files (`.1`, `.2`): about 1.5 MiB total | Persistent, rotated |
 | `/usr/local/naspeed/run/naspeed.sock` | Socket for the TOS platform proxy | Unix socket, mode `0660` | On start | N/A | Removed on stop; a stale one is replaced on start |
 | `/var/api/naspeed.sock` | Link the TOS proxy follows to the socket above | Symbolic link, created by root | On every service start | N/A | Removed on stop |
+| `/usr/local/naspeed/webui/` | The interface files that TOS serves at `/naspeed/` | Directory with six static files | Unpacked from `webui.bz2` by the platform on installation, and again by the package's `postinst` on every upgrade | Fixed, about 165 KB; rewritten on upgrade | Static between upgrades |
 
-The TOS package serves the interface archive from memory without extracting it. NASpeed creates no cache
+Inside TOS the platform, not the NASpeed service, serves the interface from that `webui/` folder. The platform only
+unpacks it on a fresh installation, which is why `postinst` refreshes it on upgrades. NASpeed creates no cache
 or files in `/tmp`, its measurement workers write no application data, and the command line keeps its results in
 memory. The service also logs to stdout, captured by the system journal under systemd. When running Python
 directly from source, Python may create ignored `__pycache__/` directories; set `PYTHONDONTWRITEBYTECODE=1` to
@@ -316,7 +326,8 @@ disable them. The browser keeps only the theme and a copy of the language (to pa
 - [x] Offline test suite
 - [x] Permission, port and runtime-file reference
 - [x] Installable `.deb` package for TOS 7, built and published automatically as a GitHub Release
-- [ ] Validation on real TerraMaster hardware, including Python 3.10
+- [x] Installation, upgrade and real tests on a TerraMaster NAS, with the Python 3.10 that ships with TOS 7
+- [ ] Remaining hardware checks: uninstall, NAS reboot and an expired TOS session
 - [ ] Installation guide
 - [ ] Submission to the TerraMaster App Center
 
