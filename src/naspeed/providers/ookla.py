@@ -116,16 +116,11 @@ class Ookla(Provider):
 
     def _hello(self, endpoint):
         """True when ``endpoint`` answers like an Ookla server."""
-        conn = netutil.PinnedHTTPConnection(endpoint, 5.0)
         try:
-            conn.request("GET", "/hello?nocache=1", headers={"User-Agent": netutil.USER_AGENT})
-            resp = conn.getresponse()
-            body = resp.read(256)
-            return resp.status == 200 and body.lower().startswith(b"hello")
+            status, body = netutil.pinned_get(endpoint, "/hello?nocache=1", timeout=5.0, limit=256)
         except Exception:
             return False
-        finally:
-            conn.close()
+        return status == 200 and body.lower().startswith(b"hello")
 
     def open(self, ctx, server_id=""):
         servers = self.list_servers(ctx)
@@ -155,7 +150,7 @@ class Ookla(Provider):
         client = self._client()
         public_client = {k: client.get(k, "") for k in ("ip", "isp", "country")}
         return HttpSession(
-            self, dict(server), endpoint, public_client,
+            dict(server), endpoint, public_client,
             download_path="/download?nocache={rand}&size={size}",
             upload_path="/upload?nocache={rand}",
             download_size=DOWNLOAD_SIZE,

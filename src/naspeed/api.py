@@ -206,7 +206,7 @@ class App:
 
     def _preflight(self, request):
         response = Response(204, b"", "text/plain; charset=utf-8", {
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
             "Access-Control-Allow-Headers": "Content-Type, X-Csrf-Token, Cookie, X-Requested-With",
             "Access-Control-Max-Age": "600",
         })

@@ -16,6 +16,7 @@
   var PING_SLOTS = 12;
   var SVG_NS = "http://www.w3.org/2000/svg";
   var VIEWS = ["test", "history", "settings"];
+  var ARROW_STEPS = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
 
   var I18N = window.NASpeedI18n;
   var prefs = window.NASpeedPrefs;
@@ -36,6 +37,14 @@
       node.textContent = text;
     }
     return node;
+  }
+
+  function externalLink(text, href) {
+    var link = el("a", "", text);
+    link.href = href;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    return link;
   }
 
   function svgEl(tag, className) {
@@ -60,6 +69,7 @@
     test: null, // live state of the test started or followed from this page
     pinned: null, // a saved result opened from the history
     lastResult: null,
+    lastShown: null, // lastResult set aside while a test starts, back if the start fails
     model: null,
     history: null,
     historyCount: 0,
@@ -1102,6 +1112,14 @@
         state.pollFailures = 0;
         if (data.test) {
           state.test = data.test;
+        } else if (!data.running && state.test && state.test.status === "running") {
+          /* The service restarted during the test and no longer knows it. */
+          state.test = {
+            status: "error",
+            phase: "done",
+            provider: state.test.provider,
+            error: { code: "interrupted" }
+          };
         }
         state.running = !!data.running;
         if (state.running) {
@@ -1418,6 +1436,14 @@
     return result[kind] && isNumber(result[kind].mbps) ? result[kind].mbps : null;
   }
 
+  function medianSpeed(results, kind) {
+    return median(
+      results.map(function (result) {
+        return speedOf(result, kind);
+      })
+    );
+  }
+
   function latencyOf(result) {
     return result.ping && isNumber(result.ping.latency) ? result.ping.latency : null;
   }
@@ -1489,19 +1515,23 @@
     return svg;
   }
 
+  function chartLabel(result) {
+    return (
+      fmtDate(result.ts) +
+      " · ↓ " +
+      fmtSpeedUnit(speedOf(result, "download")) +
+      " · ↑ " +
+      fmtSpeedUnit(speedOf(result, "upload"))
+    );
+  }
+
   function announceChartSelection() {
     var hits = $("h-skyline").querySelectorAll(".sk-hit");
     for (var i = 0; i < hits.length; i += 1) {
       hits[i].classList.toggle("sk-selected", i === state.chartIndex);
     }
     var result = state.chartItems[state.chartIndex];
-    $("h-chart-selection").textContent = result
-      ? fmtDate(result.ts) +
-        " · ↓ " +
-        fmtSpeedUnit(speedOf(result, "download")) +
-        " · ↑ " +
-        fmtSpeedUnit(speedOf(result, "upload"))
-      : "";
+    $("h-chart-selection").textContent = result ? chartLabel(result) : "";
   }
 
   function drawSkyline(items) {
@@ -1524,12 +1554,7 @@
       hit.setAttribute("width", slot.toFixed(2));
       hit.setAttribute("height", "100");
       var title = svgEl("title");
-      title.textContent =
-        fmtDate(result.ts) +
-        " · ↓ " +
-        fmtSpeedUnit(speedOf(result, "download")) +
-        " · ↑ " +
-        fmtSpeedUnit(speedOf(result, "upload"));
+      title.textContent = chartLabel(result);
       hit.append(title);
       hit.classList.toggle("sk-selected", index === state.chartIndex);
       hit.addEventListener("click", function () {
@@ -1578,28 +1603,8 @@
       row.append(
         el("td", "", group.name),
         el("td", "num", fmtInt(group.items.length)),
-        el(
-          "td",
-          "num",
-          fmtSpeed(
-            median(
-              group.items.map(function (r) {
-                return speedOf(r, "download");
-              })
-            )
-          )
-        ),
-        el(
-          "td",
-          "num",
-          fmtSpeed(
-            median(
-              group.items.map(function (r) {
-                return speedOf(r, "upload");
-              })
-            )
-          )
-        ),
+        el("td", "num", fmtSpeed(medianSpeed(group.items, "download"))),
+        el("td", "num", fmtSpeed(medianSpeed(group.items, "upload"))),
         el("td", "num", fmtMs(median(group.items.map(latencyOf))))
       );
       body.append(row);
@@ -1616,6 +1621,16 @@
       direction.streams ? tn("fact.streams", direction.streams) : "",
       isNumber(direction.latency) ? t("fact.loaded", { v: fmtMs(direction.latency) }) : ""
     ].concat(cpuFacts(direction.cpu)));
+  }
+
+  /* A delete that did not go through: say so where the history gives its size
+     (one line, so without the detail). */
+  function historyFailed(error) {
+    if (!state.gate) {
+      var text = errorText({ code: error.code });
+      $("h-limit").textContent = text;
+      announce(text);
+    }
   }
 
   function fillPanel(bar, result) {
@@ -1651,7 +1666,7 @@
             state.pinned = null;
           }
           loadHistory();
-        });
+        }, historyFailed);
       });
     });
     actions.append(open, remove);
@@ -1740,20 +1755,8 @@
     $("h-count").textContent = tn("hist.count", all.length);
     $("h-limit").textContent =
       data.enabled === false ? t("hist.disabled") : t("hist.limit", { max: fmtInt(data.limit) });
-    $("h-down-value").textContent = fmtSpeed(
-      median(
-        items.map(function (r) {
-          return speedOf(r, "download");
-        })
-      )
-    );
-    $("h-up-value").textContent = fmtSpeed(
-      median(
-        items.map(function (r) {
-          return speedOf(r, "upload");
-        })
-      )
-    );
+    $("h-down-value").textContent = fmtSpeed(medianSpeed(items, "download"));
+    $("h-up-value").textContent = fmtSpeed(medianSpeed(items, "upload"));
     $("h-ping-value").textContent = fmtMs(median(items.map(latencyOf)));
     drawSkyline(items);
     renderProviderTable(all);
@@ -1868,7 +1871,7 @@
         state.pinned = null;
         state.lastResult = null;
         loadHistory();
-      });
+      }, historyFailed);
     });
   }
 
@@ -1899,7 +1902,7 @@
         onPick(option.value);
       });
       button.addEventListener("keydown", function (event) {
-        var step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+        var step = ARROW_STEPS[event.key];
         if (!step || !options.length) {
           return;
         }
@@ -2014,10 +2017,7 @@
     $("about-version").textContent = "NASpeed " + (state.info.beta ? t("about.beta", { version: version }) : version);
     $("about-mode").textContent = has("about.mode." + state.info.mode) ? t("about.mode." + state.info.mode) : "";
     var licenseParts = t("about.license").split("{license}");
-    var licenseLink = el("a", "", "GPL-3.0-only");
-    licenseLink.href = "https://www.gnu.org/licenses/gpl-3.0.html";
-    licenseLink.target = "_blank";
-    licenseLink.rel = "noopener noreferrer";
+    var licenseLink = externalLink("GPL-3.0-only", "https://www.gnu.org/licenses/gpl-3.0.html");
     $("about-license").textContent = "";
     $("about-license").append(licenseParts[0], licenseLink, licenseParts.slice(1).join(""));
     var list = $("about-providers");
@@ -2025,11 +2025,7 @@
     state.providers.forEach(function (provider) {
       var name = el("dt");
       if (/^https:\/\//.test(provider.homepage || "")) {
-        var link = el("a", "", provider.name);
-        link.href = provider.homepage;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        name.append(link);
+        name.append(externalLink(provider.name, provider.homepage));
       } else {
         name.textContent = provider.name;
       }
@@ -2115,7 +2111,7 @@
 
     // Arrow keys move between providers, as in any radio group.
     $("providers").addEventListener("keydown", function (event) {
-      var step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+      var step = ARROW_STEPS[event.key];
       if (!step || state.running || state.starting || !state.providers.length) {
         return;
       }
@@ -2135,7 +2131,7 @@
     });
 
     $("servers-list").addEventListener("keydown", function (event) {
-      var step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+      var step = ARROW_STEPS[event.key];
       if (!step) {
         return;
       }

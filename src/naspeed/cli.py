@@ -30,6 +30,10 @@ def _out(text=""):
     sys.stdout.flush()
 
 
+def _fmt_ms(value):
+    return "-" if value is None else "%s" % value
+
+
 def _fmt_speed(mbps):
     if mbps is None:
         return "-"
@@ -132,12 +136,12 @@ def run(command, cfg, args):
     ping = result["ping"]
     _out("")
     _out("ping      %s ms (low %s, high %s, jitter %s)" % (
-        ping["latency"], ping["low"], ping["high"], ping["jitter"]))
+        _fmt_ms(ping["latency"]), _fmt_ms(ping["low"]), _fmt_ms(ping["high"]), _fmt_ms(ping["jitter"])))
     for direction in ("download", "upload"):
         data = result[direction]
         _out("%-9s %-12s peak %-12s %d conns, %.1f MB in %.1f s, loaded ping %s ms, errors %d" % (
             direction, _fmt_speed(data["mbps"]), _fmt_speed(data["peak_mbps"]), data["streams"],
-            data["bytes"] / 1e6, data["seconds"], data["latency"], data["errors"]))
+            data["bytes"] / 1e6, data["seconds"], _fmt_ms(data["latency"]), data["errors"]))
         load = data.get("cpu")
         if load:
             _out("%-9s NAS CPU %s%%, busiest core %s%%%s" % (

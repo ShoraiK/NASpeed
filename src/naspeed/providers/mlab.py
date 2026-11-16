@@ -32,8 +32,8 @@ class Ndt7Session(Session):
     kind = "ndt7"
     self_terminating = True
 
-    def __init__(self, provider, server, endpoint, paths):
-        super().__init__(provider, server, endpoint, {})
+    def __init__(self, server, endpoint, paths):
+        super().__init__(server, endpoint, {})
         self.paths = paths
         self.initial_streams = 1
         self.max_streams = 1
@@ -128,4 +128,4 @@ class MLab(Provider):
         for direction, key in (("download", DOWNLOAD_KEY), ("upload", UPLOAD_KEY)):
             parts = urllib.parse.urlsplit(item["urls"][key])
             paths[direction] = parts.path + ("?" + parts.query if parts.query else "")
-        return Ndt7Session(self, dict(server), endpoint, paths)
+        return Ndt7Session(dict(server), endpoint, paths)

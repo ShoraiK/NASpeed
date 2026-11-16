@@ -41,8 +41,7 @@ class Session:
     # The transfer ends by itself (ndt7): a finished pool is not an error.
     self_terminating = False
 
-    def __init__(self, provider, server, endpoint, client=None):
-        self.provider = provider
+    def __init__(self, server, endpoint, client=None):
         self.server = server
         self.endpoint = endpoint
         self.client = client or {}
@@ -58,9 +57,9 @@ class Session:
 class HttpSession(Session):
     """Download with GET and upload with POST over persistent connections."""
 
-    def __init__(self, provider, server, endpoint, client=None, *, download_path,
+    def __init__(self, server, endpoint, client=None, *, download_path,
                  upload_path, download_size, upload_size, headers=None):
-        super().__init__(provider, server, endpoint, client)
+        super().__init__(server, endpoint, client)
         self.download_path = download_path
         self.upload_path = upload_path
         self.download_size = int(download_size)
@@ -140,10 +139,6 @@ class Provider:
         with self._cache_lock:
             self._cache[key] = (now, value)
         return value
-
-    def _forget(self, key):
-        with self._cache_lock:
-            self._cache.pop(key, None)
 
 
 def rank_servers(servers, targets, ip_version="auto"):

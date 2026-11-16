@@ -417,7 +417,8 @@ class TestRunner:
                     average = live
                     fraction = 0.15 * min(1.0, t / max(settle_until, 0.1))
 
-                if t - last_series >= SERIES_INTERVAL:
+                grown = t - last_series >= SERIES_INTERVAL
+                if grown:
                     last_series = t
                     series.append([round(t, 2), round(live, 2)])
                 with self._lock:
@@ -430,7 +431,9 @@ class TestRunner:
                     if window_start is not None:
                         state["window_start"] = round(window_start[0], 2)
                     state["peak_mbps"] = round(peak, 2)
-                    state["series"] = list(series)
+                    if grown:
+                        # A new list each time: snapshot() copies it under the lock.
+                        state["series"] = list(series)
                     self._state["progress"] = self._progress(direction, fraction)
                     if snap.info.get("client_ip") and not client.get("ip"):
                         client["ip"] = snap.info["client_ip"]

@@ -4,6 +4,20 @@ Notable changes in each NASpeed version, newest first. Every 0.x version is a be
 
 Each section opens with a one-line summary that the package build copies into the App Center release note, so keep that line plain text and no longer than 300 characters. The release workflow adds the whole section to the GitHub release notes, which turn every line break into a visible one, so write each paragraph and bullet on a single line.
 
+## 0.3.2
+
+A maintenance release from a full review of NASpeed. A test cut short by a restart of the service now says so instead of staying on screen as running, a few failures report their real cause, and code that nothing used is gone.
+
+- If the NASpeed service restarts during a test, the web interface reports that the test stopped for that reason. Until now the test stayed on screen as if it were still running.
+- When deleting a result or the whole history fails, the History view says why, in place of the line that gives how many results it keeps. Until now nothing happened.
+- A test that fails while it opens its connections reports the real cause instead of an internal error.
+- With Cloudflare, a malformed reply while NASpeed reads the connection details no longer stops the test: it falls back as it already did for network errors. The command line reports an unreachable Cloudflare as unavailable instead of failing.
+- The command line prints a dash instead of "None" for a latency it could not measure.
+- During a test, the service copies the speed trace only when it gains a point instead of on every update.
+- Answers to the browser's preflight requests list only the methods the API uses: GET, POST and OPTIONS.
+- Cleanup with no visible change: code that nothing used is gone, the providers share one helper for their short requests to a test server, and the web interface keeps repeated code in shared helpers.
+- Five new tests cover these fixes.
+
 ## 0.3.1
 
 Automatic mode keeps adding connections while the speed keeps rising, so a service that limits each connection no longer holds the result down. The M-Lab notice now comes before every M-Lab test until you hide it, and Settings describes every provider.

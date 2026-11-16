@@ -106,7 +106,8 @@ class LoadedProbe(threading.Thread):
 
     def finish(self):
         self._stop_event.set()
-        self.join(timeout=self.timeout + 1.0)
+        if self.ident is not None:  # the test can fail before the probe starts
+            self.join(timeout=self.timeout + 1.0)
         return summarize(list(self.values), self.attempts)
 
 

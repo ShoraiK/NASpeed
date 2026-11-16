@@ -97,19 +97,14 @@ class LibreSpeed(Provider):
         if not url:
             return {}
         path = urllib.parse.urlsplit(_with_query(url, "isp=true&distance=km"))
-        conn = netutil.PinnedHTTPConnection(endpoint, 6.0)
         try:
-            conn.request("GET", path.path + "?" + path.query,
-                         headers={"User-Agent": netutil.USER_AGENT, "Accept": "application/json"})
-            resp = conn.getresponse()
-            body = resp.read(65536)
-            if resp.status != 200:
-                return {}
-            text = body.decode("utf-8", "replace").strip()
-        except (OSError, Exception):
+            status, body = netutil.pinned_get(endpoint, path.path + "?" + path.query,
+                                              {"Accept": "application/json"}, timeout=6.0, limit=65536)
+        except Exception:
             return {}
-        finally:
-            conn.close()
+        if status != 200:
+            return {}
+        text = body.decode("utf-8", "replace").strip()
         processed = text
         isp = ""
         country = ""
@@ -144,10 +139,10 @@ class LibreSpeed(Provider):
         if raw is None or endpoint is None or server.get("latency_ms") is None:
             raise ProviderError("server_unreachable", server.get("host", ""))
         endpoint = ensure_family(endpoint, ctx.ip_version)
-        download =urllib.parse.urlsplit(_with_query(raw["dl"], "ckSize={size_mib}&r={rand}"))
+        download = urllib.parse.urlsplit(_with_query(raw["dl"], "ckSize={size_mib}&r={rand}"))
         upload = urllib.parse.urlsplit(_with_query(raw["ul"], "r={rand}"))
         return HttpSession(
-            self, dict(server), endpoint, self._client(endpoint, raw["ip"]),
+            dict(server), endpoint, self._client(endpoint, raw["ip"]),
             download_path=download.path + "?" + download.query,
             upload_path=upload.path + "?" + upload.query,
             download_size=DOWNLOAD_SIZE,

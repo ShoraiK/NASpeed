@@ -49,14 +49,6 @@ class Endpoint:
     def tls(self):
         return self.scheme in ("https", "wss")
 
-    @property
-    def origin(self):
-        default = 443 if self.tls else 80
-        scheme = "https" if self.tls else "http"
-        if self.port == default:
-            return "%s://%s" % (scheme, self.host)
-        return "%s://%s:%d" % (scheme, self.host, self.port)
-
     def to_dict(self):
         return {"scheme": self.scheme, "host": self.host, "port": self.port,
                 "ip": self.ip, "family": self.family}
@@ -175,6 +167,18 @@ class PinnedHTTPConnection(http.client.HTTPConnection):
 
     def connect(self):
         self.sock = open_socket(self._endpoint, self.timeout, self._verify)
+
+
+def pinned_get(endpoint, path, headers=None, timeout=CONTROL_TIMEOUT, limit=MAX_CONTROL_BYTES):
+    """GET ``path`` from a pinned Endpoint: ``(status, body)``, with at most
+    ``limit`` bytes of body. Network and HTTP errors are raised as they come."""
+    conn = PinnedHTTPConnection(endpoint, timeout)
+    try:
+        conn.request("GET", path, headers=dict({"User-Agent": USER_AGENT}, **(headers or {})))
+        resp = conn.getresponse()
+        return resp.status, resp.read(limit)
+    finally:
+        conn.close()
 
 
 _opener = None

@@ -10,12 +10,16 @@ Run from the project root:
 
 import contextlib
 import email.message
+import http.client
+import http.server
 import io
 import json
 import os
 import re
+import socket
 import sys
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -25,11 +29,11 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 from naspeed import BETA, __version__, auth, cli, config  # noqa: E402
 from naspeed.api import App, strip_prefix  # noqa: E402
 from naspeed.config import Config, _checkout_root, build_parser, load_config  # noqa: E402
-from naspeed.engine import cpu, latency  # noqa: E402
+from naspeed.engine import cpu, latency, netutil  # noqa: E402
 from naspeed.engine.runner import (  # noqa: E402
     StreamScaler, TestError, _recent_rate, _resample, streams_for_speed)
 from naspeed.httpd import Request  # noqa: E402
-from naspeed.providers import build_registry  # noqa: E402
+from naspeed.providers import Context, ProviderError, build_registry  # noqa: E402
 from naspeed.store import Store  # noqa: E402
 
 SESSION = {"X-Csrf-Token": "tok123", "Cookie": "TMSESSNAME=sess-1; X-Csrf-Token=tok123;"}
@@ -195,6 +199,7 @@ class RoutingTests(AppCase):
         self.assertEqual(status, 204)
         self.assertEqual(response.headers["Access-Control-Allow-Origin"], "http://nas.local:8181")
         self.assertIn("X-Csrf-Token", response.headers["Access-Control-Allow-Headers"])
+        self.assertEqual(response.headers["Access-Control-Allow-Methods"], "GET, POST, OPTIONS")
 
     def test_foreign_origin_gets_no_cors_headers(self):
         headers = dict(SESSION, Origin="http://evil.example", Host="nas.local:8181")
@@ -367,6 +372,11 @@ class EngineMathTests(unittest.TestCase):
         self.assertEqual(summary["jitter"], round((2 + 1 + 19) / 3, 2))
         self.assertEqual(summary["loss"], 0.2)
         self.assertIsNone(latency.summarize([], attempts=3)["latency"])
+
+    def test_probe_that_never_started_finishes_cleanly(self):
+        # A test can fail while it opens its connections, before the probe starts.
+        probe = latency.LoadedProbe(None)
+        self.assertIsNone(probe.finish()["latency"])
 
     def test_connection_scaling(self):
         self.assertEqual([streams_for_speed(v) for v in (10, 149, 150, 599, 600, 2499, 2500, 5999, 6000, 10000)],
@@ -580,6 +590,73 @@ class CommandLineTests(unittest.TestCase):
         self.assertEqual(code, 0)
         list_servers.assert_called_once()
         runner.assert_not_called()
+
+
+    def test_missing_latency_prints_a_dash(self):
+        self.assertEqual(cli._fmt_ms(None), "-")
+        self.assertEqual(cli._fmt_ms(12.5), "12.5")
+
+
+class ProviderFallbackTests(unittest.TestCase):
+    def test_cloudflare_falls_back_when_a_lookup_gets_a_malformed_reply(self):
+        provider = build_registry()["cloudflare"]
+        replies = [http.client.IncompleteRead(b""), (200, b"ip=192.0.2.1\nloc=ZZ\ncolo=ZZZ\n")]
+
+        def fake_get(_endpoint, _path):
+            reply = replies.pop(0)
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
+
+        with mock.patch.object(provider, "_get", side_effect=fake_get):
+            server, client = provider._describe_connection(None)
+        self.assertEqual(server["id"], "ZZZ")
+        self.assertEqual(client["ip"], "192.0.2.1")
+        with mock.patch.object(provider, "_get", side_effect=http.client.BadStatusLine("")):
+            server, client = provider._describe_connection(None)
+        self.assertEqual((server["id"], client), ("anycast", {}))
+
+    def test_cloudflare_server_list_reports_an_unreachable_service(self):
+        provider = build_registry()["cloudflare"]
+        error = netutil.NetError("dns_failed", "speed.cloudflare.com")
+        with mock.patch.object(provider, "_endpoint", side_effect=error):
+            with self.assertRaises(ProviderError) as caught:
+                provider.list_servers(Context())
+        self.assertEqual(caught.exception.code, "provider_unavailable")
+
+
+class PinnedRequestTests(unittest.TestCase):
+    def test_pinned_get_sends_our_headers_and_caps_the_body(self):
+        seen = {}
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen.update(path=self.path, agent=self.headers.get("User-Agent"),
+                            accept=self.headers.get("Accept"), host=self.headers.get("Host"))
+                body = b"hello world"
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.handle_request, daemon=True)
+        thread.start()
+        port = server.server_address[1]
+        try:
+            # Pinned to 127.0.0.1 while the Host header keeps the name.
+            endpoint = netutil.Endpoint("http", "localhost", port, "127.0.0.1", socket.AF_INET)
+            status, body = netutil.pinned_get(endpoint, "/hello?x=1", {"Accept": "text/plain"},
+                                              timeout=5.0, limit=5)
+        finally:
+            thread.join(5)
+            server.server_close()
+        self.assertEqual((status, body), (200, b"hello"))
+        self.assertEqual(seen, {"path": "/hello?x=1", "agent": netutil.USER_AGENT,
+                                "accept": "text/plain", "host": "localhost:%d" % port})
 
 
 class VersionTests(unittest.TestCase):

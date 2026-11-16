@@ -8,6 +8,7 @@ data centre answers, so there is no server list to choose from.
 
 from __future__ import annotations
 
+import http.client
 import json
 
 from ..engine import netutil
@@ -31,16 +32,7 @@ class Cloudflare(Provider):
         return netutil.pin_endpoint("https", HOST, 443, ctx.ip_version)
 
     def _get(self, endpoint, path):
-        conn = netutil.PinnedHTTPConnection(endpoint, netutil.CONTROL_TIMEOUT)
-        try:
-            conn.request("GET", path, headers={
-                "User-Agent": netutil.USER_AGENT, "Accept": "*/*", "Referer": REFERER,
-            })
-            resp = conn.getresponse()
-            body = resp.read(netutil.MAX_CONTROL_BYTES)
-            return resp.status, body
-        finally:
-            conn.close()
+        return netutil.pinned_get(endpoint, path, {"Accept": "*/*", "Referer": REFERER})
 
     def _describe_connection(self, endpoint):
         """Return ``(server, client)`` dicts from /meta, falling back to /cdn-cgi/trace."""
@@ -65,7 +57,7 @@ class Cloudflare(Provider):
                     "country": str(meta.get("country") or ""),
                 }
                 return server, client
-        except (OSError, ValueError, netutil.NetError):
+        except (OSError, ValueError, http.client.HTTPException, netutil.NetError):
             pass
         try:
             status, body = self._get(endpoint, "/cdn-cgi/trace")
@@ -76,7 +68,7 @@ class Cloudflare(Provider):
                 if trace.get("colo"):
                     server["id"] = server["name"] = trace["colo"]
                 client = {"ip": trace.get("ip", ""), "isp": "", "country": trace.get("loc", "")}
-        except (OSError, ValueError, netutil.NetError):
+        except (OSError, ValueError, http.client.HTTPException, netutil.NetError):
             pass
         return server, client
 
@@ -86,7 +78,11 @@ class Cloudflare(Provider):
             server, _client = self._describe_connection(endpoint)
             return [server]
 
-        return [dict(s) for s in self._cached(("servers", ctx.ip_version), load)]
+        try:
+            servers = self._cached(("servers", ctx.ip_version), load)
+        except netutil.NetError as exc:
+            raise ProviderError("provider_unavailable", exc.detail)
+        return [dict(s) for s in servers]
 
     def open(self, ctx, server_id=""):
         try:
@@ -95,7 +91,7 @@ class Cloudflare(Provider):
             raise ProviderError("server_unreachable", exc.detail)
         server, client = self._describe_connection(endpoint)
         return HttpSession(
-            self, server, endpoint, client,
+            server, endpoint, client,
             download_path="/__down?bytes={size}",
             upload_path="/__up?r={rand}",
             download_size=DOWNLOAD_SIZE,
