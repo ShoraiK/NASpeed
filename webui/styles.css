@@ -232,6 +232,11 @@ a {
   outline-offset: 2px;
 }
 
+/* A mouse or touch click never leaves a ring: only keyboard focus shows one. */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
 .sr {
   position: absolute;
   width: 1px;
@@ -540,6 +545,23 @@ main {
   background: var(--ink);
   color: var(--paper);
   font-weight: 600;
+}
+
+.seg-langs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.seg-langs button {
+  height: 48px;
+  font-size: 15px;
+}
+
+@media (max-width: 480px) {
+  .seg-langs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .switch-row {
@@ -926,6 +948,26 @@ main {
   height: 192px;
 }
 
+.h-fig.h-swap .figure,
+.h-fig.h-swap .caption {
+  animation: h-swap 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes h-swap {
+  from {
+    opacity: 0.25;
+    transform: translateY(0.3rem);
+    filter: blur(3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .h-fig.h-swap .figure,
+  .h-fig.h-swap .caption {
+    animation: none;
+  }
+}
+
 .h-fig .figure {
   font-size: var(--fs-figure);
 }
@@ -1123,16 +1165,174 @@ td {
   gap: 6px;
 }
 
-.h-more {
-  grid-column: 1 / -1;
-  min-height: 56px;
-  padding: 0 var(--pad);
-  font-weight: 600;
-  transition: background-color 0.15s ease;
+/* The rows of a new page come in one after another, from the side the user paged
+   towards; the rows on show slip away first (see swapHistoryList). */
+.h-list[data-motion="next"] {
+  --row-x: 32px;
 }
 
-.h-more:hover {
+.h-list[data-motion="prev"] {
+  --row-x: -32px;
+}
+
+.h-list[data-motion="fresh"] {
+  --row-y: 12px;
+}
+
+.bar.row-in {
+  animation: row-in 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 30ms);
+}
+
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translate(var(--row-x, 0px), var(--row-y, 0px));
+    filter: blur(3px);
+  }
+}
+
+.h-list[data-leaving] .bar {
+  animation: row-out 0.14s ease-in forwards;
+}
+
+.h-list[data-leaving="next"] {
+  --row-out: -24px;
+}
+
+.h-list[data-leaving="prev"] {
+  --row-out: 24px;
+}
+
+@keyframes row-out {
+  to {
+    opacity: 0;
+    transform: translateX(var(--row-out, 0px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar.row-in,
+  .h-list[data-leaving] .bar {
+    animation: none;
+  }
+}
+
+/* The pager under the History list (see renderPager). */
+.h-pager {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 10px var(--pad);
+}
+
+.h-pages,
+.h-page-nums {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center; /* buttons are left-aligned everywhere else */
+  min-width: 40px;
+  height: 40px;
+  padding: 0 10px;
+  border-radius: var(--r);
   background: var(--tile-2);
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+.pg:hover {
+  background: var(--tile-3);
+}
+
+.pg:active {
+  transform: scale(0.94);
+}
+
+.pg[aria-current="page"] {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.pg[aria-disabled="true"] {
+  background: var(--tile-2);
+  color: var(--ink-3);
+  cursor: default;
+  transform: none;
+}
+
+.pg svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pg-gap {
+  min-width: 20px;
+  text-align: center;
+  color: var(--ink-3);
+}
+
+.h-page-status {
+  display: none;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.h-pager-side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  margin-left: auto;
+}
+
+.h-range {
+  font-variant-numeric: tabular-nums;
+}
+
+.h-size {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Narrow screens: the arrows and "Page 2 of 9" instead of every page button. */
+@media (max-width: 480px) {
+  .h-pager {
+    padding: 10px;
+  }
+
+  .h-pages {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .h-page-nums,
+  .h-range {
+    display: none;
+  }
+
+  .h-page-status {
+    display: block;
+  }
+
+  .h-pager-side {
+    margin: 0 auto;
+  }
 }
 
 .h-empty {

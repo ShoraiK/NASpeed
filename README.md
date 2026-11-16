@@ -13,7 +13,7 @@ Measure the connection your TerraMaster NAS actually gets — not the one your b
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white">
   <img alt="Zero dependencies" src="https://img.shields.io/badge/dependencies-none-2fd08a?style=flat-square">
   <img alt="6 interface languages" src="https://img.shields.io/badge/UI%20languages-6-ffb52e?style=flat-square">
-  <img alt="Version 0.3.2 beta" src="https://img.shields.io/badge/version-0.3.2%20beta-fe7d37?style=flat-square">
+  <img alt="Version 0.4.0 beta" src="https://img.shields.io/badge/version-0.4.0%20beta-fe7d37?style=flat-square">
   <a href="LICENSE"><img alt="License: GPL-3.0-only" src="https://img.shields.io/badge/license-GPL--3.0--only-a32d2a?style=flat-square"></a>
 </p>
 
@@ -67,7 +67,7 @@ NASpeed runs the test **on the NAS itself**, so the numbers are the ones your NA
 - 📊 **The full picture.** Download, upload, idle latency, jitter and latency under load (bufferbloat), with live traces that show the warm-up apart from the measured window.
 - ⚡ **Built for fast lines.** Parallel connections scale with the speed observed, and every TLS connection gets its own worker process so Python's GIL does not cap multi-gigabit links.
 - 🩺 **Knows when the NAS is the bottleneck.** Every result records the processor load during the measurement and warns when a busy CPU or a CPU quota, not your line, may have held the speed back.
-- 🕘 **History you control.** Keep 10 to 1000 results, switch history off entirely, filter, delete or export to CSV.
+- 🕘 **History you control.** Keep 10 to 1000 results, page through them, switch history off entirely, filter, delete or export to CSV.
 - 🎨 **Modern interface.** Light and dark themes, a layout that adapts to narrow windows and six languages: English, Español, Français, Deutsch, Português and 中文. Nothing is loaded from the internet — no CDNs, no web fonts.
 - 🔐 **Secure by design.** Access is tied to your TOS session; requests without one are rejected.
 - 🧰 **Command line included.** `naspeed test` and `naspeed providers`, with JSON output for scripting.
@@ -327,7 +327,8 @@ differs from the service's and reloads itself once. NASpeed creates no cache
 or files in `/tmp`, its measurement workers write no application data, and the command line keeps its results in
 memory. The service also logs to stdout, captured by the system journal under systemd. When running Python
 directly from source, Python may create ignored `__pycache__/` directories; set `PYTHONDONTWRITEBYTECODE=1` to
-disable them. The browser keeps only the theme and a copy of the language (to paint the first frame) in local storage.
+disable them. The browser keeps only the theme, a copy of the language (to paint the first frame) and how many results a
+History page shows in local storage.
 
 ### After uninstalling
 
@@ -367,7 +368,7 @@ kept (`rc`).
 ## Versioning
 
 NASpeed uses plain numeric `MAJOR.MINOR.PATCH` versions, the format the TOS App Center compares to offer updates.
-The current version is **0.3.2**, a beta. Every version is described in [CHANGELOG.md](CHANGELOG.md).
+The current version is **0.4.0**, a beta. Every version is described in [CHANGELOG.md](CHANGELOG.md).
 
 - **0.x releases are betas.** Features, settings and the API may still change between them. Beta status is
   tracked separately, never as a `-beta` suffix, so every release remains a plain, comparable number.

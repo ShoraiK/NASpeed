@@ -103,6 +103,20 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):  # noqa: A002 - signature fixed by the base class
         logger.debug("%s %s", self.address_string(), format % args)
 
+    def _read_chunked(self):
+        """A body in chunked transfer encoding; ValueError if malformed or too big."""
+        body = b""
+        while True:
+            size = int(self.rfile.readline(1024).split(b";", 1)[0].strip(), 16)
+            if size == 0:
+                while self.rfile.readline(1024).strip():
+                    pass  # trailer fields, up to the blank line
+                return body
+            if size < 0 or len(body) + size > MAX_BODY:
+                raise ValueError("body too large")
+            body += self.rfile.read(size)
+            self.rfile.readline(1024)  # the CRLF that ends the chunk
+
     def _client_ip(self):
         address = self.client_address
         if isinstance(address, tuple) and address and self.server.transport == "tcp":
@@ -129,6 +143,13 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                     return self._write(Response.error(413, "body_too_large"))
                 if size:
                     body = self.rfile.read(size)
+            elif self.headers.get("Transfer-Encoding", "").strip().lower() == "chunked":
+                # Some proxies send even an empty body in chunks.
+                try:
+                    body = self._read_chunked()
+                except ValueError:
+                    self.close_connection = True
+                    return self._write(Response.error(400, "bad_request"))
             elif self.headers.get("Transfer-Encoding"):
                 self.close_connection = True
                 return self._write(Response.error(411, "length_required"))

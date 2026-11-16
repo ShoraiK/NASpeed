@@ -163,7 +163,25 @@
         </table>
       </div>
       <div class="h-list" id="h-list"></div>
-      <button type="button" class="tile h-more" id="h-more" data-i18n="hist.more" hidden>Show more</button>
+      <nav class="tile h-pager" id="h-pager" data-i18n-attr="aria-label:hist.page.nav" hidden>
+        <div class="h-pages" id="h-page-turn">
+          <button type="button" class="pg" id="h-page-prev" data-i18n-attr="aria-label:hist.page.prev">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7"/></svg>
+          </button>
+          <span class="h-page-nums" id="h-page-nums"></span>
+          <span class="h-page-status" id="h-page-status"></span>
+          <button type="button" class="pg" id="h-page-next" data-i18n-attr="aria-label:hist.page.next">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+        <div class="h-pager-side">
+          <p class="note h-range" id="h-range"></p>
+          <div class="h-size">
+            <span class="note" id="h-size-label" data-i18n="hist.page.size">Per page</span>
+            <div class="seg" id="h-page-size" role="radiogroup" aria-labelledby="h-size-label"></div>
+          </div>
+        </div>
+      </nav>
       <div class="tile h-empty" id="h-empty" hidden>
         <p class="statement" id="h-empty-title"></p>
         <p class="note" id="h-empty-sub"></p>
@@ -210,7 +228,7 @@
       <div class="tile s-tile">
         <h2 class="statement" data-i18n="set.language">Language</h2>
         <p class="note" data-i18n="set.language.help"></p>
-        <select class="field" id="lang-settings" name="settings-language" autocomplete="off" data-i18n-attr="aria-label:set.language"></select>
+        <div class="seg seg-langs" id="set-language" role="radiogroup" data-i18n-attr="aria-label:set.language"></div>
       </div>
       <div class="tile s-tile s-text">
         <h2 class="statement" data-i18n="about.how.title">How NASpeed measures</h2>

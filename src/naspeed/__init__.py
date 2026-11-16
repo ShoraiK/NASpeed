@@ -13,5 +13,5 @@ APP_NAME = "NASpeed"
 # config.ini ("version", "beta") and DEBIAN/control ("Version"). The TOS App
 # Center only detects updates between plain numeric versions (1 to 3 segments),
 # so beta status is a separate flag, never a "-beta" suffix.
-__version__ = "0.3.2"
+__version__ = "0.4.0"
 BETA = True

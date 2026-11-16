@@ -277,7 +277,7 @@ class App:
             self.store.update_settings({"hidden_notices": {provider.notice: True}})
         options = body.get("options") if isinstance(body.get("options"), dict) else None
         try:
-            state = self.runner.start(provider.id, str(body.get("server") or ""), options)
+            state = self.runner.start(provider.id, str(body.get("server") or ""), options, watched=True)
         except TestError as exc:
             raise ApiError(409 if exc.code == "busy" else 400, exc.code, exc.detail)
         if settings.get("default_provider") != provider.id:

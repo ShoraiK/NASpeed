@@ -4,6 +4,18 @@ Notable changes in each NASpeed version, newest first. Every 0.x version is a be
 
 Each section opens with a one-line summary that the package build copies into the App Center release note, so keep that line plain text and no longer than 300 characters. The release workflow adds the whole section to the GitHub release notes, which turn every line break into a visible one, so write each paragraph and bullet on a single line.
 
+## 0.4.0
+
+Fixes for stopping a test: the Stop button no longer sends an empty request that a proxy could refuse, and closing the NASpeed window stops a running test without saving it. In History, a column of the chart shows its test in the three figures above it, and saved results come in pages.
+
+- The Stop button and Delete all now send an empty JSON body, and the service reads a request body sent in chunks instead of refusing it with 411. A request without a body could be refused on its way through a proxy, so the test went on and was saved.
+- Closing the NASpeed window stops a running test, and the stopped test is not saved. The page sends the stop request as it closes, and the service also stops a test started from the web interface when no page has asked for its progress for 20 seconds: the window was closed, the browser crashed or the connection was lost.
+- History: picking a column of the chart, with a click or with Enter, shows that test in the three figures above the chart, with a short transition, instead of opening it in the Test view. Picking it again brings back the medians, and the arrow keys move the pick along. Each saved result keeps its Show on the board button.
+- History: the list of saved results comes in pages of 10, 25, 50 or 100 results, chosen next to the pager and remembered by the browser. The rows of a new page slide in one after another, without motion when the system asks for reduced motion. The Show more button is gone.
+- Settings: the language is picked from a grid of buttons as wide as the panel, like the theme, instead of a small drop-down list.
+- A click with the mouse or a touch no longer leaves a focus ring around what it clicked, such as the History chart; moving with the keyboard still shows it.
+- Two new tests cover request bodies sent in chunks and the stop of a test that nobody watches.
+
 ## 0.3.2
 
 A maintenance release from a full review of NASpeed. A test cut short by a restart of the service now says so instead of staying on screen as running, a few failures report their real cause, and code that nothing used is gone.

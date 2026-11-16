@@ -35,6 +35,9 @@ from .pool import TransferPool
 logger = log.get("runner")
 
 TICK = 0.05
+# A test started from the web interface stops when nobody has asked for its state for
+# this long: the window was closed, the browser crashed or the connection was lost.
+UNWATCHED_TIMEOUT = 20.0
 WARMUP_MIN = 1.5
 WARMUP_MAX = 6.0
 SETTLE_AFTER_SCALE = 1.5
@@ -166,13 +169,14 @@ class TestRunner:
         self._thread = None
         self._stop = threading.Event()
         self._pool = None
+        self._polled = 0.0
 
     # ---- public API -------------------------------------------------------
     def running(self):
         thread = self._thread
         return thread is not None and thread.is_alive()
 
-    def start(self, provider_id, server_id="", options=None):
+    def start(self, provider_id, server_id="", options=None, watched=False):
         with self._lock:
             if self.running():
                 raise TestError("busy")
@@ -200,14 +204,25 @@ class TestRunner:
                 "saved": False,
             }
             self._t0 = time.perf_counter()
+            self._polled = time.monotonic()
             self._thread = threading.Thread(
                 target=self._run, args=(provider, str(server_id or ""), opts), name="test", daemon=True
             )
             self._thread.start()
+            if watched:
+                threading.Thread(target=self._watch, args=(self._stop, self._thread),
+                                 name="test-watch", daemon=True).start()
         return self.snapshot()
 
     def stop(self):
         self._stop.set()
+
+    def _watch(self, stop, thread):
+        """Stop the test when nobody watches it any more (see UNWATCHED_TIMEOUT)."""
+        while thread.is_alive() and not stop.wait(1.0):
+            if time.monotonic() - self._polled > UNWATCHED_TIMEOUT:
+                logger.info("nobody is watching the test: stopping it")
+                stop.set()
 
     def shutdown(self, timeout=4.0):
         self._stop.set()
@@ -219,6 +234,7 @@ class TestRunner:
             pool.stop(0.5)
 
     def snapshot(self):
+        self._polled = time.monotonic()  # someone is watching: see _watch
         with self._lock:
             if self._state is None:
                 return None

@@ -20,6 +20,8 @@ import socket
 import sys
 import tempfile
 import threading
+import time
+import types
 import unittest
 from unittest import mock
 
@@ -30,8 +32,10 @@ from naspeed import BETA, __version__, auth, cli, config  # noqa: E402
 from naspeed.api import App, strip_prefix  # noqa: E402
 from naspeed.config import Config, _checkout_root, build_parser, load_config  # noqa: E402
 from naspeed.engine import cpu, latency, netutil  # noqa: E402
+from naspeed.engine import runner as runner_module  # noqa: E402
 from naspeed.engine.runner import (  # noqa: E402
-    StreamScaler, TestError, _recent_rate, _resample, streams_for_speed)
+    StreamScaler, TestError, TestRunner, _recent_rate, _resample, streams_for_speed)
+from naspeed import httpd  # noqa: E402
 from naspeed.httpd import Request  # noqa: E402
 from naspeed.providers import Context, ProviderError, build_registry  # noqa: E402
 from naspeed.store import Store  # noqa: E402
@@ -62,10 +66,11 @@ class FakeRunner:
     def snapshot(self):
         return {"status": "running"} if self.busy else None
 
-    def start(self, provider_id, server_id="", options=None):
+    def start(self, provider_id, server_id="", options=None, watched=False):
         if self.busy:
             raise TestError("busy")
         self.started.append((provider_id, server_id, options))
+        self.watched = watched
         self.busy = True
         return {"status": "running", "provider": {"id": provider_id}}
 
@@ -209,10 +214,11 @@ class RoutingTests(AppCase):
 
 class TestFlowTests(AppCase):
     def test_start_stop_and_busy(self):
-        status, payload, _ = self.call("POST", "/api/test/start", {"provider": "cloudflare", "server": "BCN"})
+        status, payload, _ = self.call("POST", "/api/test/start", {"provider": "cloudflare", "server": "ZZZ"})
         self.assertEqual(status, 200)
         self.assertTrue(payload["running"])
-        self.assertEqual(self.runner.started[0][:2], ("cloudflare", "BCN"))
+        self.assertEqual(self.runner.started[0][:2], ("cloudflare", "ZZZ"))
+        self.assertTrue(self.runner.watched)  # stops by itself if the window goes away
         status, payload, _ = self.call("POST", "/api/test/start", {"provider": "ookla"})
         self.assertEqual((status, payload["error"]), (409, "busy"))
         self.assertEqual(self.call("POST", "/api/test/stop", {})[0], 200)
@@ -372,6 +378,23 @@ class EngineMathTests(unittest.TestCase):
         self.assertEqual(summary["jitter"], round((2 + 1 + 19) / 3, 2))
         self.assertEqual(summary["loss"], 0.2)
         self.assertIsNone(latency.summarize([], attempts=3)["latency"])
+
+    def test_chunked_body_is_read(self):
+        # Some proxies send even an empty POST body in chunks.
+        reader = types.SimpleNamespace(rfile=io.BytesIO(b"2;x=1\r\n{}\r\n0\r\nX-Trailer: 1\r\n\r\n"))
+        self.assertEqual(httpd._Handler._read_chunked(reader), b"{}")
+        for bad in (b"zz\r\n", b"%x\r\n" % (httpd.MAX_BODY + 1)):
+            with self.assertRaises(ValueError):
+                httpd._Handler._read_chunked(types.SimpleNamespace(rfile=io.BytesIO(bad)))
+
+    def test_unwatched_test_is_stopped(self):
+        runner = TestRunner.__new__(TestRunner)
+        runner._polled = time.monotonic() - runner_module.UNWATCHED_TIMEOUT - 1
+        stop = threading.Event()
+        thread = threading.Thread(target=stop.wait, daemon=True)
+        thread.start()
+        runner._watch(stop, thread)
+        self.assertTrue(stop.is_set())
 
     def test_probe_that_never_started_finishes_cleanly(self):
         # A test can fail while it opens its connections, before the probe starts.

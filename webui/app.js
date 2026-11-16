@@ -12,7 +12,7 @@
   // The TOS desktop and its login page. The web root only loads this address.
   var TOS_LOGIN_URL = "/tos/";
   var POLL_MS = 110;
-  var HISTORY_PAGE = 40;
+  var PAGE_SIZES = [10, 25, 50, 100]; // results a page of the History list can hold
   var PING_SLOTS = 12;
   var SVG_NS = "http://www.w3.org/2000/svg";
   var VIEWS = ["test", "history", "settings"];
@@ -74,9 +74,11 @@
     history: null,
     historyCount: 0,
     historyFilter: "",
-    historyShown: HISTORY_PAGE,
+    historyPage: 1,
+    historyPageSize: savedPageSize(),
     chartItems: [],
     chartIndex: -1,
+    chartPicked: null,
     gate: "",
     polling: false,
     pollTimer: 0,
@@ -279,17 +281,30 @@
         }
       }
     }
-    $("lang-settings").value = lang;
+    renderLanguageControls();
   }
 
-  function fillLanguageSelect() {
-    var select = $("lang-settings");
-    select.textContent = "";
-    I18N.order.forEach(function (code) {
-      var option = el("option", "", I18N.langs[code].name);
-      option.value = code;
-      select.append(option);
-    });
+  function renderLanguageControls() {
+    buildSeg(
+      "set-language",
+      I18N.order.map(function (code) {
+        return { value: code, label: I18N.langs[code].name };
+      }),
+      lang,
+      pickLanguage
+    );
+  }
+
+  function pickLanguage(code) {
+    var focused = $("set-language").contains(document.activeElement);
+    applyLanguage(code);
+    prefs.set("language", lang);
+    renderAll();
+    var button = $("set-language").querySelector('[aria-checked="true"]');
+    if (focused && button) {
+      button.focus(); // built again in the new language; saveSetting keeps it after saving
+    }
+    saveSetting({ language: lang });
   }
 
   /* Everything that carries text built at run time. */
@@ -341,10 +356,7 @@
      TOS 7 guide asks for (sections 8.9 and 8.10): X-Csrf-Token plus a "Cookie"
      header. Browsers drop a hand-written Cookie header and send the real one,
      which holds the same two values. */
-  function api(method, path, body) {
-    if (state.gate === "denied" || state.gate === "session") {
-      return Promise.reject(new ApiError(0, "gated"));
-    }
+  function requestOptions(method, body) {
     var headers = { Accept: "application/json", "X-Requested-With": "NASpeed" };
     var csrf = cookie("X-Csrf-Token");
     if (csrf) {
@@ -359,7 +371,14 @@
       headers["Content-Type"] = "application/json";
       options.body = JSON.stringify(body);
     }
-    return fetch(API + path, options).then(
+    return options;
+  }
+
+  function api(method, path, body) {
+    if (state.gate === "denied" || state.gate === "session") {
+      return Promise.reject(new ApiError(0, "gated"));
+    }
+    return fetch(API + path, requestOptions(method, body)).then(
       function (response) {
         return response
           .json()
@@ -1252,7 +1271,7 @@
     }
     state.stopping = true;
     renderControls();
-    api("POST", "/test/stop").catch(function () {
+    api("POST", "/test/stop", {}).catch(function () {
       state.stopping = false;
       renderControls();
     });
@@ -1534,12 +1553,83 @@
     $("h-chart-selection").textContent = result ? chartLabel(result) : "";
   }
 
+  // A column picked in the chart shows its result in the three tiles above it; picking
+  // it again brings back the medians. With keep, the arrow keys move the pick along.
+  function pickChart(index, keep) {
+    var result = state.chartItems[index];
+    if (!result) {
+      return;
+    }
+    state.chartPicked = !keep && state.chartPicked === result.id ? null : result.id;
+    state.chartIndex = index;
+    announceChartSelection();
+    renderHistoryFigures(state.chartItems);
+  }
+
+  function renderHistoryFigures(items) {
+    var picked = state.chartPicked ? state.chartItems[state.chartIndex] : null;
+    [
+      ["h-down", picked ? speedOf(picked, "download") : medianSpeed(items, "download"), fmtSpeed, "down"],
+      ["h-up", picked ? speedOf(picked, "upload") : medianSpeed(items, "upload"), fmtSpeed, "up"],
+      ["h-ping", picked ? latencyOf(picked) : median(items.map(latencyOf)), fmtMs, "ping"]
+    ].forEach(function (figure) {
+      var caption = $(figure[0]).querySelector(".caption");
+      caption.dataset.i18n = picked ? figure[3] + ".caption" : "hist.median." + figure[3];
+      caption.textContent = t(caption.dataset.i18n);
+      tweenFigure($(figure[0] + "-value"), figure[1], figure[2]);
+    });
+  }
+
+  var figureStates = new WeakMap();
+
+  // Counts from the figure on show to the new one and replays the tile's swap effect.
+  function tweenFigure(node, value, format) {
+    var to = typeof value === "number" && isFinite(value) ? value : null;
+    var last = figureStates.get(node) || {};
+    var from = last.value;
+    window.cancelAnimationFrame(last.frame || 0);
+    var current = { value: to, frame: 0 };
+    figureStates.set(node, current);
+    if (from === undefined || from === to || reduceMotion.matches) {
+      node.textContent = format(to);
+      return;
+    }
+    var tile = node.closest(".tile");
+    tile.classList.remove("h-swap");
+    void tile.offsetWidth; // restarts the CSS animation
+    tile.classList.add("h-swap");
+    if (to === null || from === null) {
+      node.textContent = format(to);
+      return;
+    }
+    var start = window.performance.now();
+    var frame = function (now) {
+      var k = Math.min(1, (now - start) / 450);
+      node.textContent = format(from + (to - from) * (1 - Math.pow(1 - k, 3)));
+      if (k < 1) {
+        current.frame = window.requestAnimationFrame(frame);
+      }
+    };
+    current.frame = window.requestAnimationFrame(frame);
+  }
+
   function drawSkyline(items) {
     var svg = $("h-skyline");
     svg.textContent = "";
     var ordered = items.slice().reverse();
     state.chartItems = ordered;
+    // A result picked in the chart stays picked while it is still on it.
     state.chartIndex = ordered.length - 1;
+    var kept = false;
+    for (var k = 0; k < ordered.length; k += 1) {
+      if (ordered[k].id === state.chartPicked) {
+        state.chartIndex = k;
+        kept = true;
+      }
+    }
+    if (!kept) {
+      state.chartPicked = null;
+    }
     var peak = 1;
     ordered.forEach(function (result) {
       peak = Math.max(peak, speedOf(result, "download") || 0, speedOf(result, "upload") || 0);
@@ -1558,7 +1648,7 @@
       hit.append(title);
       hit.classList.toggle("sk-selected", index === state.chartIndex);
       hit.addEventListener("click", function () {
-        pinResult(result);
+        pickChart(index);
       });
       svg.append(hit);
       [
@@ -1674,9 +1764,14 @@
     bar.append(panel);
   }
 
-  function renderHistoryList(items) {
+  function renderHistoryList(items, motion) {
+    var animate = Boolean(motion) && !reduceMotion.matches;
+    var size = state.historyPageSize;
+    clampPage(items.length);
+    var first = (state.historyPage - 1) * size;
     var list = $("h-list");
     list.textContent = "";
+    list.dataset.motion = animate ? motion : "";
     var head = el("div", "h-list-head");
     head.append(
       el("span", "", ""),
@@ -1687,8 +1782,11 @@
       el("span", "num", t("hist.col.ping") + " (ms)")
     );
     list.append(head);
-    items.slice(0, state.historyShown).forEach(function (result) {
-      var bar = el("details", "bar");
+    items.slice(first, first + size).forEach(function (result, index) {
+      var bar = el("details", animate ? "bar row-in" : "bar");
+      if (animate) {
+        bar.style.setProperty("--i", String(Math.min(index, 12))); // one after another
+      }
       var summary = el("summary");
       summary.append(
         el("span", "bar-date", fmtDate(result.ts)),
@@ -1707,10 +1805,135 @@
       });
       list.append(bar);
     });
-    $("h-more").hidden = items.length <= state.historyShown;
+    renderPager(items.length);
   }
 
-  function renderHistory() {
+  function savedPageSize() {
+    var size = parseInt(prefs.get("historyPageSize"), 10);
+    return PAGE_SIZES.indexOf(size) >= 0 ? size : PAGE_SIZES[0];
+  }
+
+  // Keeps the page on show within the results there are; returns how many pages.
+  function clampPage(count) {
+    var pages = Math.max(1, Math.ceil(count / state.historyPageSize));
+    state.historyPage = Math.min(Math.max(1, state.historyPage), pages);
+    return pages;
+  }
+
+  // At most seven page buttons, so the arrows stay put while paging: 1 2 3 4 5 … 9,
+  // 1 … 4 5 6 … 9 or 1 … 5 6 7 8 9. A zero is a gap.
+  function pageSlots(page, pages) {
+    if (pages <= 7) {
+      var slots = [];
+      for (var p = 1; p <= pages; p += 1) {
+        slots.push(p);
+      }
+      return slots;
+    }
+    if (page <= 4) {
+      return [1, 2, 3, 4, 5, 0, pages];
+    }
+    if (page >= pages - 3) {
+      return [1, 0, pages - 4, pages - 3, pages - 2, pages - 1, pages];
+    }
+    return [1, 0, page - 1, page, page + 1, 0, pages];
+  }
+
+  // The bar under the History list: the pages, the results on show and how many a page
+  // holds. It hides while everything fits on the smallest page.
+  function renderPager(total) {
+    var pager = $("h-pager");
+    pager.hidden = total <= PAGE_SIZES[0];
+    if (pager.hidden) {
+      return;
+    }
+    var pages = clampPage(total);
+    var page = state.historyPage;
+    var first = (page - 1) * state.historyPageSize;
+    var box = $("h-page-nums");
+    var focused = box.contains(document.activeElement) ? document.activeElement.dataset.page : "";
+    box.textContent = "";
+    pageSlots(page, pages).forEach(function (number) {
+      if (!number) {
+        var gap = el("span", "pg-gap", "…");
+        gap.setAttribute("aria-hidden", "true");
+        box.append(gap);
+        return;
+      }
+      var button = el("button", "pg", fmtInt(number));
+      button.type = "button";
+      button.dataset.page = String(number);
+      button.setAttribute("aria-label", t("hist.page.number", { page: fmtInt(number) }));
+      if (number === page) {
+        button.setAttribute("aria-current", "page");
+      }
+      button.addEventListener("click", function () {
+        turnPage(number);
+      });
+      box.append(button);
+    });
+    if (focused) {
+      (box.querySelector('[data-page="' + focused + '"]') || box.querySelector("[aria-current]")).focus();
+    }
+    $("h-page-turn").hidden = pages <= 1;
+    $("h-page-prev").setAttribute("aria-disabled", String(page <= 1));
+    $("h-page-next").setAttribute("aria-disabled", String(page >= pages));
+    $("h-page-status").textContent = t("hist.page.status", { page: fmtInt(page), pages: fmtInt(pages) });
+    $("h-range").textContent = t("hist.page.range", {
+      from: fmtInt(first + 1),
+      to: fmtInt(Math.min(total, first + state.historyPageSize)),
+      total: fmtInt(total)
+    });
+  }
+
+  var listSwap = 0;
+
+  // Another page of the History list: the pager answers at once, the rows on show slip
+  // away and the new ones come in one after another.
+  function swapHistoryList(motion) {
+    var list = $("h-list");
+    var top = document.querySelector(".top");
+    if (list.getBoundingClientRect().top < Math.max(0, top ? top.getBoundingClientRect().bottom : 0)) {
+      list.scrollIntoView({ block: "start", behavior: reduceMotion.matches ? "auto" : "smooth" });
+    }
+    var pages = clampPage(filteredHistory().length);
+    announce(t("hist.page.status", { page: fmtInt(state.historyPage), pages: fmtInt(pages) }));
+    renderPager(filteredHistory().length);
+    window.clearTimeout(listSwap);
+    if (reduceMotion.matches) {
+      renderHistoryList(filteredHistory());
+      return;
+    }
+    list.dataset.leaving = motion;
+    listSwap = window.setTimeout(function () {
+      delete list.dataset.leaving;
+      renderHistoryList(filteredHistory(), motion);
+    }, 140);
+  }
+
+  function turnPage(page) {
+    var pages = clampPage(filteredHistory().length);
+    var next = Math.min(Math.max(1, page), pages);
+    if (next !== state.historyPage) {
+      var motion = next > state.historyPage ? "next" : "prev";
+      state.historyPage = next;
+      swapHistoryList(motion);
+    }
+  }
+
+  function pickPageSize(size) {
+    if (size === state.historyPageSize) {
+      return;
+    }
+    var first = (state.historyPage - 1) * state.historyPageSize;
+    state.historyPageSize = size;
+    state.historyPage = Math.floor(first / size) + 1; // the first result on show stays on show
+    prefs.set("historyPageSize", size);
+    markSeg("h-page-size", size);
+    swapHistoryList("fresh");
+  }
+
+  function renderHistory(motion) {
     var data = state.history;
     if (!data) {
       return;
@@ -1725,7 +1948,7 @@
     });
     $("h-empty").hidden = !empty;
     if (empty) {
-      $("h-more").hidden = true;
+      $("h-pager").hidden = true;
       $("h-empty-title").textContent = t(data.enabled === false ? "hist.disabled" : "hist.empty");
       $("h-empty-sub").textContent = data.enabled === false ? "" : t("hist.empty.sub");
       return;
@@ -1755,12 +1978,10 @@
     $("h-count").textContent = tn("hist.count", all.length);
     $("h-limit").textContent =
       data.enabled === false ? t("hist.disabled") : t("hist.limit", { max: fmtInt(data.limit) });
-    $("h-down-value").textContent = fmtSpeed(medianSpeed(items, "download"));
-    $("h-up-value").textContent = fmtSpeed(medianSpeed(items, "upload"));
-    $("h-ping-value").textContent = fmtMs(median(items.map(latencyOf)));
     drawSkyline(items);
+    renderHistoryFigures(items);
     renderProviderTable(all);
-    renderHistoryList(items);
+    renderHistoryList(items, motion);
   }
 
   function csvCell(value) {
@@ -1867,7 +2088,7 @@
       if (!yes) {
         return;
       }
-      api("POST", "/history/clear").then(function () {
+      api("POST", "/history/clear", {}).then(function () {
         state.pinned = null;
         state.lastResult = null;
         loadHistory();
@@ -1919,6 +2140,16 @@
       });
       box.append(button);
     });
+  }
+
+  // Moves the choice of a group built by buildSeg without building it again.
+  function markSeg(id, value) {
+    var buttons = $(id).querySelectorAll("button[role='radio']");
+    for (var i = 0; i < buttons.length; i += 1) {
+      var on = buttons[i].dataset.value === String(value);
+      buttons[i].setAttribute("aria-checked", String(on));
+      buttons[i].tabIndex = on ? 0 : -1;
+    }
   }
 
   function saveSetting(patch) {
@@ -2055,7 +2286,7 @@
       }
     }
     if (name === "history") {
-      state.historyShown = HISTORY_PAGE;
+      state.historyPage = 1;
       renderHistory();
       loadHistory();
     }
@@ -2091,6 +2322,14 @@
       }
     });
     window.addEventListener("focus", resync);
+    // Closing the window stops the test: a keepalive request outlives the page.
+    window.addEventListener("pagehide", function () {
+      if (state.running && !state.gate) {
+        var options = requestOptions("POST", {});
+        options.keepalive = true;
+        fetch(API + "/test/stop", options).catch(function () {});
+      }
+    });
 
     $("theme-toggle").addEventListener("click", function () {
       setTheme(currentTheme() === "dark" ? "light" : "dark");
@@ -2102,12 +2341,6 @@
       darkScheme.addEventListener("change", schemeChanged);
     }
 
-    $("lang-settings").addEventListener("change", function (event) {
-      applyLanguage(event.target.value);
-      prefs.set("language", lang);
-      renderAll();
-      saveSetting({ language: lang });
-    });
 
     // Arrow keys move between providers, as in any radio group.
     $("providers").addEventListener("keydown", function (event) {
@@ -2196,8 +2429,8 @@
 
     $("h-filter").addEventListener("change", function (event) {
       state.historyFilter = event.target.value;
-      state.historyShown = HISTORY_PAGE;
-      renderHistory();
+      state.historyPage = 1;
+      renderHistory("fresh");
     });
     $("h-skyline").addEventListener("keydown", function (event) {
       if (!state.chartItems.length) {
@@ -2206,19 +2439,34 @@
       var step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
       if (step) {
         event.preventDefault();
-        state.chartIndex = Math.max(0, Math.min(state.chartItems.length - 1, state.chartIndex + step));
-        announceChartSelection();
+        var next = Math.max(0, Math.min(state.chartItems.length - 1, state.chartIndex + step));
+        if (state.chartPicked) {
+          pickChart(next, true);
+        } else {
+          state.chartIndex = next;
+          announceChartSelection();
+        }
       } else if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        pinResult(state.chartItems[state.chartIndex]);
+        pickChart(state.chartIndex);
       }
     });
     $("h-export").addEventListener("click", exportCsv);
     $("h-clear").addEventListener("click", clearHistory);
-    $("h-more").addEventListener("click", function () {
-      state.historyShown += HISTORY_PAGE;
-      renderHistoryList(filteredHistory());
+    $("h-page-prev").addEventListener("click", function () {
+      turnPage(state.historyPage - 1);
     });
+    $("h-page-next").addEventListener("click", function () {
+      turnPage(state.historyPage + 1);
+    });
+    buildSeg(
+      "h-page-size",
+      PAGE_SIZES.map(function (size) {
+        return { value: size, label: String(size) };
+      }),
+      state.historyPageSize,
+      pickPageSize
+    );
 
     $("set-history").addEventListener("click", function () {
       saveSetting({ save_history: $("set-history").getAttribute("aria-checked") !== "true" });
@@ -2242,7 +2490,6 @@
   }
 
   function init() {
-    fillLanguageSelect();
     applyLanguage(cachedLang());
     bind();
     renderThemeControls();
