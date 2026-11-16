@@ -8,7 +8,7 @@ API (all under ``/api``; the web UI calls it through the TOS proxy as
     GET  /api/info                 application, providers and settings
     GET  /api/state                live state of the current/last test
     GET  /api/servers?provider=&q= candidate servers, best latency first
-    POST /api/test/start           {provider, server, options, accept_notice}
+    POST /api/test/start           {provider, server, options, accept_notice, hide_notice}
     POST /api/test/stop
     GET  /api/history?limit=
     POST /api/history/delete       {id}
@@ -266,11 +266,15 @@ class App:
         body = request.json()
         provider = self._provider(body.get("provider"))
         settings = self.store.get_settings()
+        accepted = body.get("accept_notice") is True
         if provider.notice and not settings.get("accepted_notices", {}).get(provider.notice):
-            if body.get("accept_notice") is True:
+            if accepted:
                 self.store.update_settings({"accepted_notices": {provider.notice: int(time.time())}})
             else:
                 raise ApiError(412, "notice_required", extra={"notice": provider.notice})
+        if provider.notice and accepted and body.get("hide_notice") is True:
+            # "Don't show this again", ticked in the notice the user has just accepted.
+            self.store.update_settings({"hidden_notices": {provider.notice: True}})
         options = body.get("options") if isinstance(body.get("options"), dict) else None
         try:
             state = self.runner.start(provider.id, str(body.get("server") or ""), options)
@@ -314,4 +318,9 @@ class App:
     def _settings_set(self, request):
         patch = request.json()
         patch.pop("accepted_notices", None)  # only set through /test/start
+        hidden = patch.get("hidden_notices")
+        if isinstance(hidden, dict):
+            # Only notices that exist, so made-up keys never reach settings.json.
+            known = {provider.notice for provider in self.registry.values() if provider.notice}
+            patch["hidden_notices"] = {key: value for key, value in hidden.items() if key in known}
         return Response.json(self.store.update_settings(patch, tuple(self.registry)))

@@ -1159,13 +1159,15 @@
     });
   }
 
-  function startTest(accepted) {
+  function startTest(accepted, hide) {
     var provider = currentProvider();
     if (state.running || state.starting || !state.info || !provider) {
       return;
     }
-    var notices = state.settings.accepted_notices || {};
-    if (provider.notice && !notices[provider.notice] && !accepted) {
+    // The notice comes before every test until "Don't show this again" is ticked. If it was
+    // never accepted, the server answers notice_required and the notice opens anyway.
+    var hidden = state.settings.hidden_notices || {};
+    if (provider.notice && !accepted && !hidden[provider.notice]) {
       openNotice(provider);
       return;
     }
@@ -1181,12 +1183,20 @@
     api("POST", "/test/start", {
       provider: provider.id,
       server: choice ? choice.id : "",
-      accept_notice: !!accepted
+      accept_notice: !!accepted,
+      hide_notice: !!(accepted && hide)
     }).then(
       function (data) {
         if (accepted && provider.notice) {
-          notices[provider.notice] = Math.floor(Date.now() / 1000);
+          // Mirror what the server has just stored.
+          var notices = state.settings.accepted_notices || {};
+          notices[provider.notice] = notices[provider.notice] || Math.floor(Date.now() / 1000);
           state.settings.accepted_notices = notices;
+          if (hide) {
+            state.settings.hidden_notices = state.settings.hidden_notices || {};
+            state.settings.hidden_notices[provider.notice] = true;
+            buildSettings();
+          }
         }
         state.starting = false;
         state.test = data.test;
@@ -1283,6 +1293,7 @@
     if (safe) {
       link.href = provider.notice_url;
     }
+    $("dlg-notice-hide").checked = false;
     $("dlg-notice").showModal();
   }
 
@@ -1985,6 +1996,15 @@
     );
     $("set-history").setAttribute("aria-checked", String(settings.save_history !== false));
     $("set-history-state").textContent = t(settings.save_history !== false ? "value.on" : "value.off");
+    // Only M-Lab has a notice today; the switch follows the first provider that has one.
+    var noticed = state.providers.filter(function (provider) {
+      return provider.notice;
+    })[0];
+    $("notice-row").hidden = !noticed;
+    if (noticed) {
+      $("set-notice").setAttribute("data-notice", noticed.notice);
+      $("set-notice").setAttribute("aria-checked", String(!(settings.hidden_notices || {})[noticed.notice]));
+    }
     var limit = $("set-limit");
     limit.max = String(options.history_max || 1000);
     limit.value = String(settings.history_limit);
@@ -2000,16 +2020,22 @@
     licenseLink.rel = "noopener noreferrer";
     $("about-license").textContent = "";
     $("about-license").append(licenseParts[0], licenseLink, licenseParts.slice(1).join(""));
-    var links = $("about-links");
-    links.textContent = "";
+    var list = $("about-providers");
+    list.textContent = "";
     state.providers.forEach(function (provider) {
+      var name = el("dt");
       if (/^https:\/\//.test(provider.homepage || "")) {
         var link = el("a", "", provider.name);
         link.href = provider.homepage;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
-        links.append(link);
+        name.append(link);
+      } else {
+        name.textContent = provider.name;
       }
+      var item = el("div", "s-prov");
+      item.append(name, el("dd", "", has("about.prov." + provider.id) ? t("about.prov." + provider.id) : ""));
+      list.append(item);
     });
   }
 
@@ -2152,8 +2178,9 @@
       });
     }
     $("dlg-notice-ok").addEventListener("click", function () {
+      var hide = $("dlg-notice-hide").checked;
       $("dlg-notice").close();
-      startTest(true);
+      startTest(true, hide);
     });
     $("dlg-confirm-ok").addEventListener("click", function () {
       var done = confirmDone;
@@ -2199,6 +2226,13 @@
 
     $("set-history").addEventListener("click", function () {
       saveSetting({ save_history: $("set-history").getAttribute("aria-checked") !== "true" });
+    });
+    $("set-notice").addEventListener("click", function () {
+      var button = $("set-notice");
+      var hidden = {};
+      // The switch reads "warn before every test", so turning it off hides the notice.
+      hidden[button.getAttribute("data-notice")] = button.getAttribute("aria-checked") === "true";
+      saveSetting({ hidden_notices: hidden });
     });
     $("set-limit").addEventListener("change", function (event) {
       var max = (state.info && state.info.options && state.info.options.history_max) || 1000;

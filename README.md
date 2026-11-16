@@ -13,7 +13,7 @@ Measure the connection your TerraMaster NAS actually gets — not the one your b
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white">
   <img alt="Zero dependencies" src="https://img.shields.io/badge/dependencies-none-2fd08a?style=flat-square">
   <img alt="6 interface languages" src="https://img.shields.io/badge/UI%20languages-6-ffb52e?style=flat-square">
-  <img alt="Version 0.3.0 beta" src="https://img.shields.io/badge/version-0.3.0%20beta-fe7d37?style=flat-square">
+  <img alt="Version 0.3.1 beta" src="https://img.shields.io/badge/version-0.3.1%20beta-fe7d37?style=flat-square">
   <a href="LICENSE"><img alt="License: GPL-3.0-only" src="https://img.shields.io/badge/license-GPL--3.0--only-a32d2a?style=flat-square"></a>
 </p>
 
@@ -98,9 +98,10 @@ NASpeed runs the test **on the NAS itself**, so the numbers are the ones your NA
 > does not endorse and may change or block at any time. If that happens, the other providers are unaffected.
 
 > [!WARNING]
-> **M-Lab** publishes the result of every test as open data, **including your public IP address**. The web
-> interface asks for your explicit acceptance before the first M-Lab test, and the command line refuses to run
-> one unless you add `--accept-notice`.
+> **M-Lab** publishes the result of every test as open data and keeps it indefinitely, **including your public IP
+> address**. The web interface warns you before every M-Lab test until you tick *Don't show this again*, and you can
+> turn the warning back on in *Settings > Providers*. The command line refuses to run one unless you add
+> `--accept-notice`.
 
 Each provider is a small, self-contained module in [`src/naspeed/providers/`](src/naspeed/providers), so adding another one is straightforward.
 
@@ -309,7 +310,7 @@ Latency is sampled with plain TCP connections to the same server and port.
 | Path (relative to `/usr/local/naspeed/data/` unless noted) | Purpose | Format | Created when | Growth bound / rotation | Lifecycle |
 |---|---|---|---|---|---|
 | `/usr/local/naspeed/data/` | Container for settings and history | Directory | On start, if missing | Contents listed below | Persistent |
-| `settings.json` | Your settings — including the interface language and the provider of the last test — and the notices you accepted | JSON, mode `0600` | First time a setting changes (a test with another provider counts) or a notice is accepted | Typically under 1 KB; not a byte quota | Persistent — survives restarts, upgrades and a normal uninstall |
+| `settings.json` | Your settings — including the interface language and the provider of the last test — and the notices you accepted or chose not to see again | JSON, mode `0600` | First time a setting changes (a test with another provider counts) or a notice is accepted | Typically under 1 KB; not a byte quota | Persistent — survives restarts, upgrades and a normal uninstall |
 | `history.json` | Saved test results | JSON, mode `0600` | First saved test, unless history is off; also when history is cleared | Capped by result count (10–1000, default 300), not bytes. A result takes about 1.7 KB: roughly 0.5 MB for 300 or 1.7 MB for 1000; actual sizes vary | Persistent — survives upgrades and a normal uninstall; delete entries or clear it from the History view |
 | `<file>.tmp-<pid>` | Atomic write of `settings.json` or `history.json` | JSON | On every save | One per file being saved; renamed over the target at once | Temporary — leftovers from a crash are removed on start |
 | `<file>.corrupt` | An unreadable `settings.json` or `history.json`, set aside for inspection | As the original | Only if a file cannot be read | At most one per file; replaced if it happens again | Kept for inspection — safe to delete |
@@ -349,7 +350,7 @@ kept (`rc`).
 
 - [x] Measurement engine: latency, download, upload and latency under load
 - [x] Cloudflare, Ookla and LibreSpeed providers
-- [x] M-Lab NDT7 provider *(implemented, not yet exercised against live servers)*
+- [x] M-Lab NDT7 provider *(tested against live servers over IPv4)*
 - [x] JSON API and service
 - [x] Web interface: test, history and settings — six languages, light and dark themes
 - [x] Offline test suite
@@ -366,7 +367,7 @@ kept (`rc`).
 ## Versioning
 
 NASpeed uses plain numeric `MAJOR.MINOR.PATCH` versions, the format the TOS App Center compares to offer updates.
-The current version is **0.3.0**, a beta. Every version is described in [CHANGELOG.md](CHANGELOG.md).
+The current version is **0.3.1**, a beta. Every version is described in [CHANGELOG.md](CHANGELOG.md).
 
 - **0.x releases are betas.** Features, settings and the API may still change between them. Beta status is
   tracked separately, never as a `-beta` suffix, so every release remains a plain, comparable number.

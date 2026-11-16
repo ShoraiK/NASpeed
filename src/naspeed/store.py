@@ -38,7 +38,10 @@ DEFAULT_SETTINGS = {
     "ip_version": "auto",
     "save_history": True,
     "history_limit": 300,
+    # Notices accepted at least once, with the time of the first acceptance.
     "accepted_notices": {},
+    # Notices the web UI no longer shows before every test ("Don't show this again").
+    "hidden_notices": {},
 }
 
 
@@ -114,6 +117,9 @@ def validate_settings(patch, provider_ids=()):
         clean["accepted_notices"] = {
             str(k)[:32]: int(v) for k, v in value.items() if isinstance(v, (int, float))
         }
+    value = patch.get("hidden_notices")
+    if isinstance(value, dict):
+        clean["hidden_notices"] = {str(k)[:32]: v for k, v in value.items() if isinstance(v, bool)}
     return clean
 
 
@@ -162,9 +168,16 @@ class Store:
         with self._lock:
             current = self.get_settings()
             notices = clean.pop("accepted_notices", None)
+            hidden = clean.pop("hidden_notices", None)
             current.update(clean)
             if notices:
                 current["accepted_notices"].update(notices)
+            # True hides a notice and False shows it again; other notices keep their state.
+            for notice, hide in (hidden or {}).items():
+                if hide:
+                    current["hidden_notices"][notice] = True
+                else:
+                    current["hidden_notices"].pop(notice, None)
             self._settings = current
             self._save(self._settings_path(), current)
             # A smaller limit takes effect at once: drop the oldest entries.

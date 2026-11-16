@@ -222,9 +222,13 @@
       </div>
       <div class="tile s-tile s-text s-wide">
         <h2 class="statement" data-i18n="about.providers.title">Providers</h2>
-        <p data-i18n="about.ookla"></p>
-        <p data-i18n="about.mlab"></p>
-        <p class="s-links" id="about-links"></p>
+        <dl class="s-provs" id="about-providers"></dl>
+        <div class="switch-row" id="notice-row">
+          <button type="button" class="switch" id="set-notice" role="switch" aria-checked="true">
+            <span class="switch-knob" aria-hidden="true"></span>
+          </button>
+          <label class="switch-label" for="set-notice" data-i18n="set.notice">Warn before every M-Lab test</label>
+        </div>
       </div>
       <div class="tile s-tile s-version">
         <p class="statement" id="about-version">NASpeed</p>
@@ -252,6 +256,7 @@
       <h2 class="statement" id="dlg-notice-title"></h2>
       <p id="dlg-notice-body"></p>
       <p><a id="dlg-notice-link" target="_blank" rel="noopener noreferrer" data-i18n="notice.link">Read the privacy policy</a></p>
+      <label class="check"><input type="checkbox" id="dlg-notice-hide" name="notice-hide"> <span data-i18n="notice.hide">Don't show this again</span></label>
     </div>
     <div class="dlg-foot">
       <button type="button" class="btn" data-close data-i18n="dialog.cancel">Cancel</button>

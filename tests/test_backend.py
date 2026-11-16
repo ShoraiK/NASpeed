@@ -238,6 +238,26 @@ class TestFlowTests(AppCase):
         self.call("POST", "/api/settings", {"accepted_notices": {"mlab_privacy": 1}})
         self.assertEqual(self.store.get_settings()["accepted_notices"], {})
 
+    def test_the_notice_is_hidden_only_when_accepted(self):
+        start = {"provider": "mlab", "hide_notice": True}
+        self.assertEqual(self.call("POST", "/api/test/start", start)[0], 412)
+        self.assertEqual(self.store.get_settings()["hidden_notices"], {})
+        self.assertEqual(self.call("POST", "/api/test/start", {"provider": "mlab", "accept_notice": True})[0], 200)
+        self.assertEqual(self.store.get_settings()["hidden_notices"], {})
+        # Accepted before: ticking "Don't show this again" in a later notice still hides it.
+        self.runner.busy = False
+        start["accept_notice"] = True
+        self.assertEqual(self.call("POST", "/api/test/start", start)[0], 200)
+        self.assertEqual(self.store.get_settings()["hidden_notices"], {"mlab_privacy": True})
+
+    def test_hidden_notices_can_be_changed_through_settings(self):
+        hide = {"hidden_notices": {"mlab_privacy": "yes", "made_up": True}}
+        self.assertEqual(self.call("POST", "/api/settings", hide)[1]["hidden_notices"], {})
+        hide = {"hidden_notices": {"mlab_privacy": True}}
+        self.assertEqual(self.call("POST", "/api/settings", hide)[1]["hidden_notices"], {"mlab_privacy": True})
+        show = {"hidden_notices": {"mlab_privacy": False}}
+        self.assertEqual(self.call("POST", "/api/settings", show)[1]["hidden_notices"], {})
+
     def test_invalid_json_body(self):
         request = make_request("POST", "/api/settings", SESSION)
         request.body = b"{broken"

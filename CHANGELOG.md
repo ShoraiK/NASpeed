@@ -4,13 +4,15 @@ Notable changes in each NASpeed version, newest first. Every 0.x version is a be
 
 Each section opens with a one-line summary that the package build copies into the App Center release note, so keep that line plain text and no longer than 300 characters. The release workflow adds the whole section to the GitHub release notes, which turn every line break into a visible one, so write each paragraph and bullet on a single line.
 
-## Unreleased
+## 0.3.1
 
-In automatic mode, NASpeed keeps adding connections while the total speed keeps rising, so a service that limits each connection no longer holds the result down.
+Automatic mode keeps adding connections while the speed keeps rising, so a service that limits each connection no longer holds the result down. The M-Lab notice now comes before every M-Lab test until you hide it, and Settings describes every provider.
 
 - During the warm-up, automatic mode tries twice as many connections and keeps doubling them, up to the limit set by the NAS's CPU count, while each step still raises the speed by at least half of what the new connections would add at the old speed per connection. The minimum for the speed observed still applies.
 - A service that limits each connection, as Cloudflare's upload sometimes does, now gets more connections instead of the count its first second called for. Against a local server that reads each connection at 25 Mbit/s, an upload went from 99 Mbit/s with 4 connections to 787 Mbit/s with 32.
 - Lines below 150 Mbit/s now finish with 8 connections instead of 4, and their warm-up, which is discarded, lasts about a second longer.
+- Before every M-Lab test, the web interface says what M-Lab publishes as open data and keeps indefinitely: your public IP address, the date and time, and the results. Tick *Don't show this again* to stop it, and turn it back on in *Settings > Providers*. Until now it appeared only until you accepted it once.
+- *Settings > Providers* describes each of the four providers, with a link to its website: what it is, how it measures and its main drawback.
 
 ## 0.3.0
 
