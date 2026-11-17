@@ -92,6 +92,10 @@ REQUIRED_CONFIG = {
     "allow_open_in_mobile": bool,
 }
 SCRIPT_NAMES = ("preinst", "postinst", "prerm", "postrm")
+# The generated TOS metadata, by path under packaging/. The repository keeps each
+# file byte for byte as the package installs it, so the configuration that the
+# App Center review checks can be read next to the source.
+METADATA_FILES = ("config.ini", "naspeed.lang", "DEBIAN/control")
 
 
 class BuildError(Exception):
@@ -348,6 +352,50 @@ def _control_file(metadata: dict, version: str) -> bytes:
     return text.encode("utf-8")
 
 
+def _metadata_files(root: pathlib.Path, metadata: dict, version: str, beta: bool) -> dict[str, bytes]:
+    return {
+        "config.ini": _config(metadata, version, beta),
+        "naspeed.lang": _language_file(metadata["publisher"], _release_note(root, version)),
+        "DEBIAN/control": _control_file(metadata, version),
+    }
+
+
+def _repository_metadata(root: pathlib.Path = ROOT) -> dict[str, bytes]:
+    """The TOS metadata generated from developer.json, the version and CHANGELOG.md."""
+    version, beta = _read_version(root)
+    metadata = _load_metadata(root)
+    _validate_metadata(metadata)
+    return _metadata_files(root, metadata, version, beta)
+
+
+def _check_metadata_copies(root: pathlib.Path, files: dict[str, bytes]) -> None:
+    stale = []
+    for name, data in files.items():
+        try:
+            # .gitattributes keeps LF; a checkout made without it is not stale.
+            current = (root / "packaging" / name).read_bytes().replace(b"\r\n", b"\n")
+        except OSError:
+            current = None
+        if current != data:
+            stale.append("packaging/" + name)
+    if stale:
+        raise BuildError("%s %s out of date; run python tools/build.py --write-metadata."
+                         % (", ".join(stale), "is" if len(stale) == 1 else "are"))
+
+
+def write_metadata_copies(root: pathlib.Path = ROOT) -> list[pathlib.Path]:
+    """Write the generated TOS metadata to packaging/ and return the files that changed."""
+    written = []
+    for name, data in _repository_metadata(root).items():
+        path = root / "packaging" / name
+        if path.is_file() and path.read_bytes() == data:
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        written.append(path)
+    return written
+
+
 def _webui_archive(root: pathlib.Path, version: str, timestamp: int) -> bytes:
     stream = io.BytesIO()
     with tarfile.open(fileobj=stream, mode="w:bz2", format=tarfile.USTAR_FORMAT) as archive:
@@ -497,8 +545,13 @@ def build_package(
     output_dir = pathlib.Path(output_dir or root / "dist").resolve()
     version, beta, icon = _validate_package_sources(root)
     _validate_version_progress(root, version)
-    metadata = _load_metadata(root) if metadata is None else metadata
+    from_repository = metadata is None
+    metadata = _load_metadata(root) if from_repository else metadata
     _validate_metadata(metadata)
+    metadata_files = _metadata_files(root, metadata, version, beta)
+    if from_repository:
+        # The package must publish the metadata that the repository shows.
+        _check_metadata_copies(root, metadata_files)
     timestamp = _build_timestamp(root)
 
     with tempfile.TemporaryDirectory(prefix="naspeed-build-") as temp:
@@ -515,10 +568,8 @@ def build_package(
 
         executable = payload_root / "bin" / APP_ID
         _zipapp(root, executable, timestamp)
-        (payload_root / "config.ini").write_bytes(_config(metadata, version, beta))
-        (payload_root / "naspeed.lang").write_bytes(
-            _language_file(metadata["publisher"], _release_note(root, version))
-        )
+        (payload_root / "config.ini").write_bytes(metadata_files["config.ini"])
+        (payload_root / "naspeed.lang").write_bytes(metadata_files["naspeed.lang"])
         (payload_root / "images" / "icons" / "naspeed.svg").write_bytes(icon)
         shutil.copyfile(root / "packaging" / "init.d" / "naspeed.service",
                         payload_root / "init.d" / "naspeed.service")
@@ -529,7 +580,7 @@ def build_package(
         (payload_root / "webui.bz2").write_bytes(_webui_archive(root, version, timestamp))
         shutil.copyfile(root / "LICENSE", payload_root / "LICENSE")
 
-        (control_root / "control").write_bytes(_control_file(metadata, version))
+        (control_root / "control").write_bytes(metadata_files["DEBIAN/control"])
         control_paths = []
         for script in SCRIPT_NAMES:
             source = root / "packaging" / "DEBIAN" / script
@@ -569,7 +620,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--validate-only", action="store_true",
-                      help="validate package source files without developer metadata")
+                      help="validate the package sources and the TOS metadata in packaging/ "
+                           "without building")
+    mode.add_argument("--write-metadata", action="store_true",
+                      help="write config.ini, naspeed.lang and DEBIAN/control to packaging/ again "
+                           "after a change to the version, CHANGELOG.md or developer.json")
     mode.add_argument("--release-info", action="store_true",
                       help="print the version and beta flag as key=value lines, "
                            "ready to append to $GITHUB_OUTPUT")
@@ -581,9 +636,17 @@ def main(argv: list[str] | None = None) -> int:
             print("version=%s" % version)
             print("beta=%s" % ("true" if beta else "false"))
             return 0
+        if args.write_metadata:
+            written = write_metadata_copies(ROOT)
+            for path in written:
+                print("Wrote %s" % path.relative_to(ROOT).as_posix())
+            if not written:
+                print("The TOS metadata in packaging/ is up to date.")
+            return 0
         version, beta, _icon = _validate_package_sources(ROOT)
         if args.validate_only:
-            print("NASpeed %s (%s): package sources validated." %
+            _check_metadata_copies(ROOT, _repository_metadata(ROOT))
+            print("NASpeed %s (%s): package sources and TOS metadata validated." %
                   (version, "beta" if beta else "stable"))
             return 0
         destination = build_package(ROOT, args.output_dir)

@@ -1,0 +1,9 @@
+Package: naspeed
+Version: 0.4.1
+Architecture: amd64
+Section: utils
+Priority: optional
+Maintainer: ShoraiK <13056759+ShoraiK@users.noreply.github.com>
+Depends: python3 (>= 3.10), systemd
+Description: Multi-provider speed test for TerraMaster TOS
+ Multi-provider internet speed test for TerraMaster TOS 7.

@@ -268,6 +268,45 @@ class PackageBuildTests(unittest.TestCase):
         self.assertEqual((version, beta), (__version__, BETA))
         self.assertEqual(icon, (ROOT / "webui" / "favicon.svg").read_bytes())
 
+    def test_the_package_installs_the_tos_metadata_kept_in_packaging(self):
+        # The App Center review compares the repository with the package it receives.
+        with tempfile.TemporaryDirectory() as temp, \
+                mock.patch.object(build, "_validate_version_progress"):
+            members = read_ar(build.build_package(ROOT, pathlib.Path(temp)))
+        with tarfile.open(fileobj=io.BytesIO(members["data.tar.gz"]), mode="r:gz") as data_tar, \
+                tarfile.open(fileobj=io.BytesIO(members["control.tar.gz"]), mode="r:gz") as control_tar:
+            packaged = {
+                "config.ini": data_tar.extractfile("./usr/local/naspeed/config.ini").read(),
+                "naspeed.lang": data_tar.extractfile("./usr/local/naspeed/naspeed.lang").read(),
+                "DEBIAN/control": control_tar.extractfile("./control").read(),
+            }
+        self.assertEqual(list(packaged), list(build.METADATA_FILES))
+        for name, data in packaged.items():
+            self.assertEqual(data, (ROOT / "packaging" / name).read_bytes().replace(b"\r\n", b"\n"))
+        config = json.loads(packaged["config.ini"])
+        self.assertEqual((config["id"], config["platform"], config["application_type"]),
+                         (build.APP_ID, "x86_64", "deb"))
+        self.assertEqual((config["version"], config["beta"]), (__version__, BETA))
+
+    def test_stale_metadata_copies_fail_until_they_are_written_again(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            for name in ("src/naspeed/__init__.py", "packaging/developer.json", "CHANGELOG.md"):
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT / name, root / name)
+            with self.assertRaisesRegex(build.BuildError, r"packaging/config\.ini, .* are out of date"):
+                build._check_metadata_copies(root, build._repository_metadata(root))
+            self.assertEqual(len(build.write_metadata_copies(root)), len(build.METADATA_FILES))
+            build._check_metadata_copies(root, build._repository_metadata(root))
+            self.assertEqual(build.write_metadata_copies(root), [])
+            (root / "packaging" / "naspeed.lang").write_bytes(b"[en-us]\n")
+            with self.assertRaisesRegex(
+                build.BuildError,
+                r"^packaging/naspeed\.lang is out of date; run python tools/build\.py --write-metadata",
+            ):
+                build._check_metadata_copies(root, build._repository_metadata(root))
+            self.assertEqual(build.write_metadata_copies(root), [root / "packaging" / "naspeed.lang"])
+
     def test_release_info_prints_the_version_and_beta_flag_as_github_output(self):
         output = io.StringIO()
         with contextlib.redirect_stdout(output):

@@ -13,7 +13,7 @@ Measure the connection your TerraMaster NAS actually gets — not the one your b
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white">
   <img alt="Zero dependencies" src="https://img.shields.io/badge/dependencies-none-2fd08a?style=flat-square">
   <img alt="6 interface languages" src="https://img.shields.io/badge/UI%20languages-6-ffb52e?style=flat-square">
-  <img alt="Version 0.4.0 beta" src="https://img.shields.io/badge/version-0.4.0%20beta-fe7d37?style=flat-square">
+  <img alt="Version 0.4.1 beta" src="https://img.shields.io/badge/version-0.4.1%20beta-fe7d37?style=flat-square">
   <a href="LICENSE"><img alt="License: GPL-3.0-only" src="https://img.shields.io/badge/license-GPL--3.0--only-a32d2a?style=flat-square"></a>
 </p>
 
@@ -249,7 +249,7 @@ NASpeed/
 │   └── cli.py        Command-line interface
 ├── webui/            Web interface: plain HTML, CSS and JavaScript, no build tooling
 ├── tests/            Offline test suite
-├── packaging/        TOS 7 service, lifecycle scripts and developer metadata
+├── packaging/        TOS 7 package files: config.ini, naspeed.lang, DEBIAN/, service, icon
 ├── tools/build.py    Windows-capable TOS 7 .deb builder
 ├── .github/          CI and release workflows, README screenshots (sample data)
 ├── CHANGELOG.md      What changed in each version
@@ -368,7 +368,7 @@ kept (`rc`).
 ## Versioning
 
 NASpeed uses plain numeric `MAJOR.MINOR.PATCH` versions, the format the TOS App Center compares to offer updates.
-The current version is **0.4.0**, a beta. Every version is described in [CHANGELOG.md](CHANGELOG.md).
+The current version is **0.4.1**, a beta. Every version is described in [CHANGELOG.md](CHANGELOG.md).
 
 - **0.x releases are betas.** Features, settings and the API may still change between them. Beta status is
   tracked separately, never as a `-beta` suffix, so every release remains a plain, comparable number.
@@ -390,15 +390,19 @@ The current version is **0.4.0**, a beta. Every version is described in [CHANGEL
   fixes and usability or packaging improvements, and a minor increment for significant new functionality
   during the beta. Documentation-only changes, tests and internal refactors without observable changes
   normally do not require an increment.
-- When incrementing the version, update the source, this README and [CHANGELOG.md](CHANGELOG.md) together, verify
-  that generated package metadata and the executable report the same version, and explain the increment in the
-  commit message.
+- When incrementing the version, update the source, this README and [CHANGELOG.md](CHANGELOG.md) together, run
+  `python tools/build.py --write-metadata`, verify that the generated package metadata and the executable report
+  the same version, and explain the increment in the commit message.
 
 ## Development notes
 
 - Code stays compatible with Python 3.10 and uses the standard library only.
 - The web interface is plain HTML, CSS and JavaScript and must not load external resources.
 - Line endings are LF, enforced by `.gitattributes`.
+- `packaging/` holds the TOS 7 metadata exactly as the package installs it: `config.ini`, `naspeed.lang` and
+  `DEBIAN/control`. The build generates them from `packaging/developer.json`, the version and the summary line of
+  the version in the changelog; run `python tools/build.py --write-metadata` after changing any of those. Building,
+  `--validate-only` and the tests fail while a copy is out of date.
 - Tests must stay offline.
 
 ## License

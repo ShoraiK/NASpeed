@@ -4,6 +4,13 @@ Notable changes in each NASpeed version, newest first. Every 0.x version is a be
 
 Each section opens with a one-line summary that the package build copies into the App Center release note, so keep that line plain text and no longer than 300 characters. The release workflow adds the whole section to the GitHub release notes, which turn every line break into a visible one, so write each paragraph and bullet on a single line.
 
+## 0.4.1
+
+A packaging update: the source repository now includes config.ini, naspeed.lang and the control file exactly as the package installs them, and the package lists a GitHub noreply address as its maintainer. The app itself does not change.
+
+- `packaging/` keeps `config.ini`, `naspeed.lang` and `DEBIAN/control` byte for byte as the package installs them, so the configuration that the App Center review checks can be read in the repository. `python tools/build.py --write-metadata` writes them again after a change to the version, this changelog or `packaging/developer.json`; building, `--validate-only` and the tests fail while a copy is out of date.
+- The control file of the package names the publisher's GitHub noreply address as the maintainer.
+
 ## 0.4.0
 
 Fixes for stopping a test: the Stop button no longer sends an empty request that a proxy could refuse, and closing the NASpeed window stops a running test without saving it. In History, a column of the chart shows its test in the three figures above it, and saved results come in pages.
