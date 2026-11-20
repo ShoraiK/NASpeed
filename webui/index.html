@@ -114,7 +114,11 @@
     </section>
 
     <!-- History -->
-    <section class="board board-history" id="view-history" hidden aria-labelledby="h-count">
+    <section class="board board-history" id="view-history" hidden aria-label="History" data-i18n-attr="aria-label:nav.history">
+      <div class="tile h-feedback" id="h-feedback" hidden>
+        <p class="note" id="h-feedback-text" role="status"></p>
+        <button type="button" class="btn" id="h-retry" data-i18n="err.retry" hidden>Retry</button>
+      </div>
       <article class="tile t-figure t-down h-fig" id="h-down" data-lit="true">
         <div class="tile-body">
           <p class="figure" id="h-down-value">0</p>
@@ -139,6 +143,7 @@
         <div class="h-actions">
           <select class="field" id="h-filter" name="history-provider" autocomplete="off" data-i18n-attr="aria-label:hist.col.provider"></select>
           <button type="button" class="btn" id="h-export" data-i18n="hist.export">Export CSV</button>
+          <a class="btn" id="h-download" download="naspeed-history.csv" data-i18n="hist.download" hidden>Download CSV</a>
           <button type="button" class="btn btn-danger" id="h-clear" data-i18n="hist.clear">Delete all</button>
         </div>
       </div>
@@ -146,6 +151,10 @@
         <svg class="skyline" id="h-skyline" viewBox="0 0 1000 100" preserveAspectRatio="none" role="group" tabindex="0" aria-keyshortcuts="ArrowLeft ArrowRight Enter Space" data-i18n-attr="aria-label:hist.chart.keyboard"></svg>
         <p class="sr" id="h-chart-selection" role="status" aria-live="polite"></p>
         <p class="note" id="h-chart-note"></p>
+        <div class="h-chart-step" id="h-chart-step" hidden>
+          <button type="button" class="pg" id="h-chart-prev" data-i18n-attr="aria-label:hist.chart.prev">‹</button>
+          <button type="button" class="pg" id="h-chart-next" data-i18n-attr="aria-label:hist.chart.next">›</button>
+        </div>
       </div>
       <div class="tile h-table">
         <table>

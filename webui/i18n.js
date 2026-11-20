@@ -9,6 +9,17 @@
   "use strict";
 
   var es = {
+    "hist.chart.prev": "Medición anterior",
+    "hist.chart.next": "Medición siguiente",
+    "status.saveFailed": "No se ha podido guardar el resultado en el NAS.",
+    "status.providerUnsaved": "No se ha podido recordar el proveedor elegido.",
+    "err.storage_error": "El NAS no ha podido guardar el cambio.",
+    "err.history_changed": "El historial ha cambiado. Revísalo antes de continuar.",
+    "err.test_changed": "La prueba activa ha cambiado.",
+    "hist.loading": "Cargando historial…",
+    "hist.loadFailed": "No se ha podido cargar el historial.",
+    "hist.exporting": "Preparando el CSV…",
+    "hist.download": "Descargar CSV",
     "nav.label": "Secciones",
     "nav.skip": "Saltar al contenido principal",
     "nav.test": "Test",
@@ -209,6 +220,17 @@
   };
 
   var en = {
+    "hist.chart.prev": "Previous measurement",
+    "hist.chart.next": "Next measurement",
+    "status.saveFailed": "The result could not be saved on the NAS.",
+    "status.providerUnsaved": "The selected provider could not be saved.",
+    "err.storage_error": "The NAS could not save the change.",
+    "err.history_changed": "History has changed. Review it before continuing.",
+    "err.test_changed": "The active test has changed.",
+    "hist.loading": "Loading history…",
+    "hist.loadFailed": "History could not be loaded.",
+    "hist.exporting": "Preparing CSV…",
+    "hist.download": "Download CSV",
     "nav.label": "Sections",
     "nav.skip": "Skip to main content",
     "nav.test": "Test",
@@ -409,6 +431,17 @@
   };
 
   var fr = {
+    "hist.chart.prev": "Mesure précédente",
+    "hist.chart.next": "Mesure suivante",
+    "status.saveFailed": "Le résultat n’a pas pu être enregistré sur le NAS.",
+    "status.providerUnsaved": "Le fournisseur choisi n’a pas pu être mémorisé.",
+    "err.storage_error": "Le NAS n’a pas pu enregistrer la modification.",
+    "err.history_changed": "L’historique a changé. Consultez-le avant de continuer.",
+    "err.test_changed": "Le test en cours a changé.",
+    "hist.loading": "Chargement de l’historique…",
+    "hist.loadFailed": "Impossible de charger l’historique.",
+    "hist.exporting": "Préparation du CSV…",
+    "hist.download": "Télécharger le CSV",
     "nav.label": "Sections",
     "nav.skip": "Aller au contenu principal",
     "nav.test": "Test",
@@ -609,6 +642,17 @@
   };
 
   var de = {
+    "hist.chart.prev": "Vorherige Messung",
+    "hist.chart.next": "Nächste Messung",
+    "status.saveFailed": "Das Ergebnis konnte nicht auf dem NAS gespeichert werden.",
+    "status.providerUnsaved": "Der gewählte Anbieter konnte nicht gespeichert werden.",
+    "err.storage_error": "Das NAS konnte die Änderung nicht speichern.",
+    "err.history_changed": "Der Verlauf hat sich geändert. Bitte prüfen Sie ihn erneut.",
+    "err.test_changed": "Der aktive Test hat sich geändert.",
+    "hist.loading": "Verlauf wird geladen…",
+    "hist.loadFailed": "Der Verlauf konnte nicht geladen werden.",
+    "hist.exporting": "CSV wird vorbereitet…",
+    "hist.download": "CSV herunterladen",
     "nav.label": "Bereiche",
     "nav.skip": "Zum Hauptinhalt springen",
     "nav.test": "Test",
@@ -809,6 +853,17 @@
   };
 
   var pt = {
+    "hist.chart.prev": "Medição anterior",
+    "hist.chart.next": "Medição seguinte",
+    "status.saveFailed": "Não foi possível guardar o resultado no NAS.",
+    "status.providerUnsaved": "Não foi possível guardar o fornecedor escolhido.",
+    "err.storage_error": "O NAS não conseguiu guardar a alteração.",
+    "err.history_changed": "O histórico mudou. Reveja-o antes de continuar.",
+    "err.test_changed": "O teste em curso mudou.",
+    "hist.loading": "A carregar o histórico…",
+    "hist.loadFailed": "Não foi possível carregar o histórico.",
+    "hist.exporting": "A preparar o CSV…",
+    "hist.download": "Descarregar CSV",
     "nav.label": "Secções",
     "nav.skip": "Saltar para o conteúdo principal",
     "nav.test": "Teste",
@@ -1009,6 +1064,17 @@
   };
 
   var zh = {
+    "hist.chart.prev": "上一次测量",
+    "hist.chart.next": "下一次测量",
+    "status.saveFailed": "无法将结果保存到 NAS。",
+    "status.providerUnsaved": "无法保存所选服务商。",
+    "err.storage_error": "NAS 无法保存更改。",
+    "err.history_changed": "历史记录已更改，请核对后再继续。",
+    "err.test_changed": "正在进行的测试已更改。",
+    "hist.loading": "正在加载历史记录…",
+    "hist.loadFailed": "无法加载历史记录。",
+    "hist.exporting": "正在准备 CSV…",
+    "hist.download": "下载 CSV",
     "nav.label": "栏目",
     "nav.skip": "跳转到主要内容",
     "nav.test": "测速",

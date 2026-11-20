@@ -141,7 +141,7 @@ def run(command, cfg, args):
         data = result[direction]
         _out("%-9s %-12s peak %-12s %d conns, %.1f MB in %.1f s, loaded ping %s ms, errors %d" % (
             direction, _fmt_speed(data["mbps"]), _fmt_speed(data["peak_mbps"]), data["streams"],
-            data["bytes"] / 1e6, data["seconds"], _fmt_ms(data["latency"]), data["errors"]))
+            data["measured_bytes"] / 1e6, data["seconds"], _fmt_ms(data["latency"]), data["errors"]))
         load = data.get("cpu")
         if load:
             _out("%-9s NAS CPU %s%%, busiest core %s%%%s" % (

@@ -10,6 +10,7 @@ directory (``/usr/local/naspeed/data`` on TOS). Writes are atomic
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import threading
@@ -49,6 +50,10 @@ def new_id():
     return uuid.uuid4().hex[:12]
 
 
+class StorageError(Exception):
+    """Persistent state could not be read or durably written."""
+
+
 def _atomic_write_json(path, payload):
     tmp = "%s.tmp-%d" % (path, os.getpid())
     data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -57,10 +62,7 @@ def _atomic_write_json(path, payload):
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)
             fh.flush()
-            try:
-                os.fsync(fh.fileno())
-            except OSError:
-                pass
+            os.fsync(fh.fileno())
         os.replace(tmp, path)
     except Exception:
         try:
@@ -76,13 +78,16 @@ def _read_json(path, default):
             return json.load(fh)
     except FileNotFoundError:
         return default
-    except (OSError, ValueError) as exc:
+    except OSError as exc:
+        logger.error("could not read %s: %s", path, exc)
+        raise StorageError() from exc
+    except ValueError as exc:
         logger.warning("could not read %s (%s); starting from defaults", path, exc)
         # Keep the unreadable file for inspection instead of overwriting it.
         try:
             os.replace(path, path + ".corrupt")
-        except OSError:
-            pass
+        except OSError as move_error:
+            raise StorageError() from move_error
         return default
 
 
@@ -98,7 +103,7 @@ def validate_settings(patch, provider_ids=()):
     if isinstance(value, str) and (not provider_ids or value in provider_ids):
         clean["default_provider"] = value
     value = patch.get("duration")
-    if value in DURATIONS:
+    if isinstance(value, str) and value in DURATIONS:
         clean["duration"] = value
     value = patch.get("connections")
     if value is not None and str(value) in CONNECTION_CHOICES:
@@ -129,7 +134,7 @@ class Store:
         self._lock = threading.RLock()
         self._settings = None
         self._history = None
-        self.writable = bool(persistent)
+        self._persistent = persistent
         if not persistent:
             # In-memory only (command-line tests): never touch the disk.
             self._settings = copy.deepcopy(DEFAULT_SETTINGS)
@@ -145,7 +150,6 @@ class Store:
                     except OSError:
                         pass
         except OSError as exc:
-            self.writable = False
             logger.error("data directory %s is not usable: %s", data_dir, exc)
 
     # ---- settings -------------------------------------------------------
@@ -178,14 +182,23 @@ class Store:
                     current["hidden_notices"][notice] = True
                 else:
                     current["hidden_notices"].pop(notice, None)
-            self._settings = current
+            if current == self._settings:
+                return current
+            history = self._load_history() if current["history_limit"] != self._settings["history_limit"] else ()
             self._save(self._settings_path(), current)
-            # A smaller limit takes effect at once: drop the oldest entries.
-            history = self._load_history()
-            limit = int(current.get("history_limit", 300))
+            limit = current["history_limit"]
             if len(history) > limit:
-                del history[: len(history) - limit]
-                self._save(self._history_path(), history)
+                try:
+                    self._commit_history(history[-limit:])
+                except StorageError:
+                    # The old history file is intact. Restore the old settings too.
+                    # If this write also fails, reload disk state before the next use.
+                    try:
+                        self._save(self._settings_path(), self._settings)
+                    finally:
+                        self._settings = self._history = None
+                    raise
+            self._settings = current
             return copy.deepcopy(current)
 
     def history_count(self):
@@ -196,48 +209,94 @@ class Store:
     def _load_history(self):
         if self._history is None:
             data = _read_json(self._history_path(), [])
-            self._history = [r for r in data if isinstance(r, dict)] if isinstance(data, list) else []
+            history = [r for r in data if isinstance(r, dict)] if isinstance(data, list) else []
+            limit = self.get_settings()["history_limit"]
+            if len(history) > limit:
+                # Recover a restart between publishing a smaller limit and trimming.
+                self._commit_history(history[-limit:])
+            else:
+                self._history = history
         return self._history
 
     def list_history(self, limit=None):
         with self._lock:
-            items = list(reversed(self._load_history()))
-        if limit:
-            items = items[: int(limit)]
-        return copy.deepcopy(items)
+            history = self._load_history()
+            if limit:
+                history = history[-int(limit):]
+            return copy.deepcopy(history[::-1])
 
-    def add_result(self, result):
+    @staticmethod
+    def _revision(history):
+        ids = json.dumps([entry.get("id") for entry in history], separators=(",", ":"))
+        return hashlib.sha256(ids.encode("ascii")).hexdigest()
+
+    def history_page(self, limit=None, ids=None, summary=False):
         with self._lock:
+            settings = self.get_settings()
+            history = self._load_history()
+            count = len(history)
+            revision = self._revision(history)
+            if ids is not None:
+                history = [entry for entry in history if entry.get("id") in ids]
+            items = history[-limit:] if limit else history
+            items = items[::-1]
+        if summary:
+            items = [_result_summary(entry) for entry in items]
+        else:
+            items = copy.deepcopy(items)
+        return {
+            "items": items, "count": count, "revision": revision,
+            "enabled": settings["save_history"], "limit": settings["history_limit"],
+        }
+
+    def add_result(self, result, *, if_enabled=False):
+        with self._lock:
+            settings = self.get_settings()
+            if if_enabled and not settings["save_history"]:
+                return None
             history = self._load_history()
             entry = copy.deepcopy(result)
             entry.setdefault("id", new_id())
             entry.setdefault("ts", int(time.time()))
-            history.append(entry)
-            limit = int(self.get_settings().get("history_limit", 300))
-            if len(history) > limit:
-                del history[: len(history) - limit]
-            self._save(self._history_path(), history)
-            return entry
+            limit = settings["history_limit"]
+            self._commit_history((history + [entry])[-limit:])
+            return copy.deepcopy(entry)
 
     def delete_result(self, result_id):
         with self._lock:
             history = self._load_history()
-            before = len(history)
-            history[:] = [r for r in history if r.get("id") != result_id]
-            if len(history) != before:
-                self._save(self._history_path(), history)
+            kept = [r for r in history if r.get("id") != result_id]
+            if len(kept) != len(history):
+                self._commit_history(kept)
                 return True
             return False
 
-    def clear_history(self):
+    def clear_history(self, revision=None):
         with self._lock:
-            self._history = []
-            self._save(self._history_path(), self._history)
+            if revision is not None and revision != self._revision(self._load_history()):
+                return False
+            self._commit_history([])
+            return True
+
+    def _commit_history(self, history):
+        self._save(self._history_path(), history)
+        self._history = history
 
     def _save(self, path, payload):
-        if not self.writable:
+        if not self._persistent:
             return
         try:
             _atomic_write_json(path, payload)
         except OSError as exc:
             logger.error("could not write %s: %s", path, exc)
+            raise StorageError() from exc
+
+
+def _result_summary(entry):
+    item = {key: copy.deepcopy(entry[key]) for key in ("id", "ts", "provider", "provider_name", "server")
+            if key in entry}
+    for section, field in (("ping", "latency"), ("download", "mbps"), ("upload", "mbps")):
+        values = entry.get(section)
+        if isinstance(values, dict) and field in values:
+            item[section] = {field: values[field]}
+    return item

@@ -13,7 +13,7 @@ Measure the connection your TerraMaster NAS actually gets — not the one your b
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white">
   <img alt="Zero dependencies" src="https://img.shields.io/badge/dependencies-none-2fd08a?style=flat-square">
   <img alt="6 interface languages" src="https://img.shields.io/badge/UI%20languages-6-ffb52e?style=flat-square">
-  <img alt="Version 0.4.1 beta" src="https://img.shields.io/badge/version-0.4.1%20beta-fe7d37?style=flat-square">
+  <img alt="Version 0.4.2 beta" src="https://img.shields.io/badge/version-0.4.2%20beta-fe7d37?style=flat-square">
   <a href="LICENSE"><img alt="License: GPL-3.0-only" src="https://img.shields.io/badge/license-GPL--3.0--only-a32d2a?style=flat-square"></a>
 </p>
 
@@ -41,7 +41,7 @@ Measure the connection your TerraMaster NAS actually gets — not the one your b
 > **Beta.** The backend and the web interface are complete, and the first installable TOS 7 package is
 > available on the [Releases page](https://github.com/ShoraiK/NASpeed/releases). On one x86_64 TerraMaster NAS it
 > has been installed, upgraded, uninstalled and reinstalled, used for real tests and checked with an expired TOS
-> session. A NAS reboot is still untested, so expect rough edges — see how to [install it](#install-on-tos-7-beta)
+> session. The service also restarted automatically after a NAS reboot during testing of version 0.3.0. See how to [install it](#install-on-tos-7-beta)
 > and the [roadmap](#roadmap).
 
 > [!WARNING]
@@ -181,7 +181,7 @@ On Windows, compare the output of `Get-FileHash naspeed_x86_64.deb` with the has
 
 Then open the **App Center** on the TOS desktop and install the `.deb` with its manual installation option. To upgrade, install a newer package the same way, on top of the installed one; your settings and history are kept.
 
-To uninstall, open NASpeed from the App Center's **Installed** list and choose **Uninstall** in the menu next to **Open**. Leave the option to also delete the app's configuration files unticked to keep your settings and history: they stay on the NAS and come back if you reinstall — see [After uninstalling](#after-uninstalling). Ticking it is meant to delete them as well; that has not been tested yet.
+To uninstall, open NASpeed from the App Center's **Installed** list and choose **Uninstall** in the menu next to **Open**. Leave the option to also delete the app's configuration files unticked to keep your settings and history. A reinstall restores them. Ticking the option removes them, as verified on TOS 7 with NASpeed 0.3.0. See [After uninstalling](#after-uninstalling).
 
 This is how the package has been installed, upgraded, uninstalled and reinstalled on a real NAS. TerraMaster also documents `sudo dpkg -i naspeed_x86_64.deb` over SSH for developers; that route has not been tested with NASpeed.
 
@@ -222,7 +222,7 @@ Run `python3 -m naspeed test --help` to see every option: server, duration, conn
 
 ```bash
 python3 -m unittest discover -s tests
-node tests/test_startup.js        # web UI startup checks, with Node.js
+node tests/test_startup.js        # web UI startup and interaction checks, with Node.js
 ```
 
 The suite runs entirely offline: it needs no internet access and no real speed-test servers. The
@@ -259,7 +259,7 @@ NASpeed/
 ## Security and privacy
 
 - **Tied to your TOS session.** On the NAS the service listens on a Unix socket (mode `0660`) reachable only through the platform proxy. Every request must carry a valid session cookie and a matching CSRF token, or it is rejected with `401`.
-- **Careful on TCP.** When it listens on a TCP port — as in development mode — it only answers clients on local or private networks, and only for local host names, which guards against DNS rebinding. Requests that change state need a custom header and no foreign `Origin`, which guards against cross-site requests.
+- **TCP access.** The service's production TCP listener checks the client network and the Host header. Requests that change state also require a custom header and a matching origin when one is present. Development mode (`--dev`) skips these checks and binds to loopback by default.
 - **Hardened static files.** When the service serves the interface itself — in development mode or on a TCP port — it adds a Content-Security-Policy and `X-Content-Type-Options: nosniff`, and blocks path traversal. Inside TOS the platform's own web server serves the interface files, with its own headers.
 - **No telemetry, no third-party resources.** NASpeed connects only to the provider you pick and its test servers. The interface loads nothing from the internet.
 - **Private data.** Settings and history are written atomically with `0600` permissions. History can be capped, switched off or deleted at any time.
@@ -361,14 +361,14 @@ kept (`rc`).
 - [x] Expired TOS sessions and outdated cached interfaces handled inside TOS
 - [x] Processor-load diagnostics: every result tells whether the NAS may have limited it
 - [x] Continuous integration and reproducible package builds
-- [ ] Remaining hardware check: a NAS reboot
+- [x] Automatic service restart after a NAS reboot (verified with 0.3.0)
 - [ ] Installation guide
 - [ ] Submission to the TerraMaster App Center
 
 ## Versioning
 
 NASpeed uses plain numeric `MAJOR.MINOR.PATCH` versions, the format the TOS App Center compares to offer updates.
-The current version is **0.4.1**, a beta. Every version is described in [CHANGELOG.md](CHANGELOG.md).
+The current version is **0.4.2**, a beta. Every version is described in [CHANGELOG.md](CHANGELOG.md).
 
 - **0.x releases are betas.** Features, settings and the API may still change between them. Beta status is
   tracked separately, never as a `-beta` suffix, so every release remains a plain, comparable number.

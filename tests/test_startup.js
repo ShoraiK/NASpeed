@@ -39,3 +39,6 @@ assert.equal(startup.refreshForVersion("0.2.3", "0.2.2"), "stale");
 assert.equal(replacements.length, 1);
 assert.equal(startup.refreshForVersion("0.2.4", "0.2.2"), "reloading");
 assert.equal(replacements.length, 2);
+
+// This is the web UI test entry point used by CI and release builds.
+require("./test_webui.js");

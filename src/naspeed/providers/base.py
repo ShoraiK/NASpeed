@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import threading
 import time
+from collections import OrderedDict
+from concurrent.futures import Future
 
 from ..engine import latency
 
@@ -100,9 +102,11 @@ class Provider:
     notice_url = ""
     single_stream = False
     cache_ttl = 300.0
+    cache_limit = 32
 
     def __init__(self):
-        self._cache = {}
+        self._cache = OrderedDict()
+        self._loading = {}
         self._cache_lock = threading.Lock()
 
     def describe(self):
@@ -129,15 +133,35 @@ class Provider:
 
     # -- helpers ---------------------------------------------------------
     def _cached(self, key, loader, ttl=None):
+        """Share an outstanding lookup and cache successful results for a bounded time."""
         ttl = self.cache_ttl if ttl is None else ttl
-        now = time.monotonic()
         with self._cache_lock:
+            now = time.monotonic()
+            for expired in [k for k, (until, _) in self._cache.items() if until <= now]:
+                del self._cache[expired]
             hit = self._cache.get(key)
-            if hit and now - hit[0] < ttl:
+            if hit is not None:
+                self._cache.move_to_end(key)
                 return hit[1]
-        value = loader()
+            future = self._loading.get(key)
+            owns_load = future is None
+            if owns_load:
+                self._loading[key] = future = Future()
+        if not owns_load:
+            return future.result()
+        try:
+            value = loader()
+        except BaseException as exc:
+            with self._cache_lock:
+                del self._loading[key]
+                future.set_exception(exc)
+            raise
         with self._cache_lock:
-            self._cache[key] = (now, value)
+            self._cache[key] = (time.monotonic() + ttl, value)
+            if len(self._cache) > self.cache_limit:
+                self._cache.popitem(last=False)
+            del self._loading[key]
+            future.set_result(value)
         return value
 
 

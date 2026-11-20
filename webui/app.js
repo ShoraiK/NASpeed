@@ -23,6 +23,8 @@
   var startup = window.NASpeedStartup;
   var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   var darkScheme = window.matchMedia("(prefers-color-scheme: dark)");
+  var showMiniTraces = window.matchMedia("(min-width: 1001px)");
+  var touchScreen = window.matchMedia("(any-pointer: coarse)");
 
   function $(id) {
     return document.getElementById(id);
@@ -66,12 +68,20 @@
     running: false,
     starting: false,
     stopping: false,
+    startedTestId: null,
+    startWarning: "",
+    stopError: "",
     test: null, // live state of the test started or followed from this page
     pinned: null, // a saved result opened from the history
     lastResult: null,
     lastShown: null, // lastResult set aside while a test starts, back if the start fails
     model: null,
     history: null,
+    historyRequest: 0,
+    historyLoading: false,
+    historyError: "",
+    historyNotice: "",
+    exporting: false,
     historyCount: 0,
     historyFilter: "",
     historyPage: 1,
@@ -558,6 +568,7 @@
       ts: test.started_at,
       elapsed: test.elapsed,
       saved: !!test.saved,
+      saveError: test.save_error,
       error: test.error
     };
   }
@@ -895,7 +906,7 @@
       sub = t("status.ready.sub");
     } else if (model.status === "running") {
       title = has("status." + model.phase) ? t("status." + model.phase) : t("status.init");
-      sub = joined([model.providerName, serverLine(model.server)]);
+      sub = joined([model.providerName, serverLine(model.server), state.startWarning, state.stopError]);
       progress = model.progress;
       announce(title);
     } else if (model.status === "error") {
@@ -907,7 +918,8 @@
       sub = t("status.cancelled.sub");
     } else if (model.kind === "live") {
       title = t("status.done");
-      sub = joined([model.providerName, serverLine(model.server), t(model.saved ? "status.saved" : "status.unsaved")]);
+      sub = joined([model.providerName, serverLine(model.server),
+        t(model.saveError ? "status.saveFailed" : model.saved ? "status.saved" : "status.unsaved")]);
     } else if (model.kind === "last") {
       title = t("status.last");
       sub = joined([fmtDate(model.ts), model.providerName, serverLine(model.server)]);
@@ -917,7 +929,7 @@
     }
     var limit = model && model.status === "done" ? cpuLimit(model) : null;
     if (limit) {
-      sub = joined([model.kind === "last" ? fmtDate(model.ts) : "", t("status.cpu." + limit)]);
+      sub = joined([sub, t("status.cpu." + limit)]);
     }
     $("status-title").textContent = title;
     $("status-sub").textContent = sub;
@@ -1080,13 +1092,14 @@
 
     var action = $("action");
     action.textContent = t(state.running ? "action.stop" : "action.start");
-    action.disabled = state.running ? state.stopping : state.starting || !state.info;
+    action.disabled = state.running ? state.stopping || !state.test || !state.test.id : state.starting || !state.info;
   }
 
   function renderTest() {
     var previous = state.model;
     var model = currentModel();
     state.model = model;
+    $("view-test").dataset.setup = String(!model && !state.starting);
     // A saved result appears at once; a live one eases from its last value.
     var instant = !model || model.kind !== "live" || !previous || previous.kind !== "live";
     renderStatus(model);
@@ -1174,6 +1187,8 @@
 
   function testEnded() {
     state.stopping = false;
+    state.startedTestId = null;
+    state.stopError = "";
     var test = state.test;
     renderTest();
     if (test && test.status === "done" && test.result) {
@@ -1183,14 +1198,16 @@
           down: fmtSpeedUnit(result.download && result.download.mbps),
           up: fmtSpeedUnit(result.upload && result.upload.mbps),
           ping: fmtMs(result.ping && result.ping.latency)
-        })
+        }) + (test.save_error ? " " + t("status.saveFailed") : "")
       );
     } else if (test && test.status === "error") {
       announce(t("status.error") + ". " + errorText(test.error));
     } else if (test && test.status === "cancelled") {
       announce(t("status.cancelled"));
     }
-    state.history = null;
+    if (state.view === "history") {
+      loadHistory();
+    }
     loadLast().then(function () {
       renderRoute(state.model);
     });
@@ -1210,6 +1227,9 @@
     }
     showView("test");
     state.starting = true;
+    state.startedTestId = null;
+    state.startWarning = "";
+    state.stopError = "";
     state.pinned = null;
     state.test = null;
     state.lastShown = state.lastResult;
@@ -1237,6 +1257,8 @@
         }
         state.starting = false;
         state.test = data.test;
+        state.startedTestId = data.test.id;
+        state.startWarning = data.settings_error ? t("status.providerUnsaved") : "";
         state.running = true;
         renderTest();
         startPolling();
@@ -1266,14 +1288,19 @@
   }
 
   function stopTest() {
-    if (!state.running || state.stopping) {
+    if (!state.running || state.stopping || !state.test || !state.test.id) {
       return;
     }
     state.stopping = true;
+    state.stopError = "";
     renderControls();
-    api("POST", "/test/stop", {}).catch(function () {
+    api("POST", "/test/stop", { id: state.test.id }).catch(function (error) {
       state.stopping = false;
-      renderControls();
+      if (!state.gate) {
+        state.stopError = errorText(error);
+        announce(state.stopError);
+        renderTest();
+      }
     });
   }
 
@@ -1390,7 +1417,11 @@
     var list = $("servers-list");
     var choice = state.serverChoice[provider.id];
     list.textContent = "";
-    list.append(serverRow(provider, null, !choice));
+    var automatic = serverRow(provider, null, !choice);
+    if (!choice || !servers.some(function (server) { return choice.id === String(server.id); })) {
+      automatic.tabIndex = 0;
+    }
+    list.append(automatic);
     if (status) {
       list.append(el("p", "note rows-note", t("servers." + status)));
       return;
@@ -1477,21 +1508,97 @@
     });
   }
 
-  function loadHistory() {
-    api("GET", "/history").then(
+  // Results are immutable. Share detail requests between thumbnails and open rows.
+  var detailCache = new Map();
+  var historyLanguage = "";
+  var listShowsTraces = false;
+
+  function loadDetails(ids) {
+    var missing = ids.filter(function (id) { return !detailCache.has(id); });
+    if (missing.length) {
+      var batch = api("GET", "/history?ids=" + missing.map(encodeURIComponent).join(",")).then(function (data) {
+        return new Map(data.items.map(function (item) { return [item.id, item]; }));
+      });
+      missing.forEach(function (id) {
+        var entry = batch.then(function (items) {
+          if (!items.has(id)) {
+            throw new ApiError(409, "history_changed");
+          }
+          return items.get(id);
+        }).catch(function (error) {
+          if (detailCache.get(id) === entry) {
+            detailCache.delete(id);
+          }
+          throw error;
+        });
+        detailCache.set(id, entry);
+      });
+    }
+    return ids.map(function (id) { return detailCache.get(id); });
+  }
+
+  function historyFeedback() {
+    var unavailable = !state.history || state.historyLoading || !!state.historyError;
+    $("h-clear").disabled = unavailable;
+    $("h-export").disabled = unavailable || state.exporting;
+    $("h-filter").disabled = state.exporting;
+    var message = state.historyError || state.historyNotice;
+    if (!message && state.historyLoading && !state.history) {
+      message = t("hist.loading");
+    }
+    $("h-feedback").hidden = !message;
+    $("h-feedback-text").textContent = message;
+    $("h-retry").hidden = !state.historyError;
+  }
+
+  function loadHistory(notice) {
+    var request = ++state.historyRequest;
+    state.historyLoading = true;
+    state.historyError = "";
+    state.historyNotice = notice || "";
+    historyFeedback();
+    return api("GET", "/history?summary=1").then(
       function (data) {
+        if (request !== state.historyRequest) {
+          return;
+        }
+        var previous = state.history;
+        state.historyLoading = false;
         state.history = data;
         state.historyCount = data.count || 0;
-        if (!state.running) {
-          state.lastResult = (data.items && data.items[0]) || null;
+        var ids = new Set(data.items.map(function (item) { return item.id; }));
+        detailCache.forEach(function (_, id) {
+          if (!ids.has(id)) {
+            detailCache.delete(id);
+          }
+        });
+        if (state.pinned && !ids.has(state.pinned.id)) {
+          state.pinned = null;
         }
-        renderHistory();
+        if (state.lastResult && !ids.has(state.lastResult.id)) {
+          state.lastResult = null;
+          if (data.items.length && !state.running) {
+            loadLast();
+          }
+        }
+        historyFeedback();
+        if (!previous || !data.revision || previous.revision !== data.revision || previous.limit !== data.limit ||
+            previous.enabled !== data.enabled || historyLanguage !== lang) {
+          resetDownload();
+          if (state.view === "history") {
+            renderHistory();
+          } else {
+            historyLanguage = ""; // The new snapshot has not been drawn yet.
+          }
+        }
       },
-      function () {
-        if (!state.gate && !state.history) {
-          state.history = { items: [], count: 0, enabled: true, limit: 0 };
-          renderHistory();
+      function (error) {
+        if (request !== state.historyRequest || state.gate) {
+          return;
         }
+        state.historyLoading = false;
+        state.historyError = t("hist.loadFailed") + " " + errorText(error);
+        historyFeedback();
       }
     );
   }
@@ -1545,12 +1652,14 @@
   }
 
   function announceChartSelection() {
-    var hits = $("h-skyline").querySelectorAll(".sk-hit");
-    for (var i = 0; i < hits.length; i += 1) {
-      hits[i].classList.toggle("sk-selected", i === state.chartIndex);
+    var selected = $("h-chart-cursor");
+    if (selected) {
+      selected.setAttribute("x", (state.chartIndex * 1000 / Math.max(state.chartItems.length, 24)).toFixed(2));
     }
     var result = state.chartItems[state.chartIndex];
     $("h-chart-selection").textContent = result ? chartLabel(result) : "";
+    $("h-chart-prev").disabled = state.chartIndex <= 0;
+    $("h-chart-next").disabled = state.chartIndex >= state.chartItems.length - 1;
   }
 
   // A column picked in the chart shows its result in the three tiles above it; picking
@@ -1636,38 +1745,59 @@
     });
     var yMax = niceMax(peak * 1.05);
     var slot = 1000 / Math.max(ordered.length, 24);
-    ordered.forEach(function (result, index) {
-      var x = index * slot;
-      var hit = svgEl("rect", "sk-hit");
-      hit.setAttribute("x", x.toFixed(2));
-      hit.setAttribute("y", "0");
-      hit.setAttribute("width", slot.toFixed(2));
-      hit.setAttribute("height", "100");
-      var title = svgEl("title");
-      title.textContent = chartLabel(result);
-      hit.append(title);
-      hit.classList.toggle("sk-selected", index === state.chartIndex);
-      hit.addEventListener("click", function () {
-        pickChart(index);
-      });
-      svg.append(hit);
-      [
-        ["download", "sk-down", 0.08],
-        ["upload", "sk-up", 0.52]
-      ].forEach(function (item) {
+    updateChartSteps();
+    var selected = svgEl("rect", "sk-hit sk-selected");
+    selected.id = "h-chart-cursor";
+    selected.setAttribute("width", slot.toFixed(2));
+    selected.setAttribute("height", "100");
+    var hover = selected.cloneNode(false);
+    hover.removeAttribute("id");
+    hover.setAttribute("visibility", "hidden");
+    svg.append(selected, hover);
+
+    // Two paths draw every bar; coordinate hit-testing keeps each original result selectable.
+    [["download", "sk-down", 0.08], ["upload", "sk-up", 0.52]].forEach(function (item) {
+      var commands = [];
+      ordered.forEach(function (result, index) {
         var value = speedOf(result, item[0]);
         if (value === null) {
           return;
         }
-        var height = Math.max(1, (value / yMax) * 100);
-        var bar = svgEl("rect", item[1]);
-        bar.setAttribute("x", (x + slot * item[2]).toFixed(2));
-        bar.setAttribute("y", (100 - height).toFixed(2));
-        bar.setAttribute("width", (slot * 0.4).toFixed(2));
-        bar.setAttribute("height", height.toFixed(2));
-        svg.append(bar);
+        var height = Math.max(1, (value / yMax) * 100).toFixed(2);
+        commands.push("M" + ((index + item[2]) * slot).toFixed(2) + " 100v-" + height +
+          "h" + (slot * 0.4).toFixed(2) + "v" + height + "z");
       });
+      var path = svgEl("path", item[1]);
+      path.setAttribute("d", commands.join(""));
+      svg.append(path);
     });
+    var surface = svgEl("rect");
+    surface.setAttribute("fill", "transparent");
+    surface.setAttribute("cursor", "pointer");
+    surface.setAttribute("width", (slot * ordered.length).toFixed(2));
+    surface.setAttribute("height", "100");
+    var title = svgEl("title");
+    surface.append(title);
+    svg.append(surface);
+    function indexAt(event) {
+      var box = svg.getBoundingClientRect();
+      return Math.min(ordered.length - 1, Math.max(0, Math.floor((event.clientX - box.left) / box.width * 1000 / slot)));
+    }
+    var hovered = -1;
+    surface.addEventListener("pointermove", function (event) {
+      var index = indexAt(event);
+      if (index !== hovered) {
+        hovered = index;
+        hover.setAttribute("x", (index * slot).toFixed(2));
+        hover.setAttribute("visibility", "visible");
+        title.textContent = chartLabel(ordered[index]);
+      }
+    });
+    surface.addEventListener("pointerleave", function () {
+      hovered = -1;
+      hover.setAttribute("visibility", "hidden");
+    });
+    surface.addEventListener("click", function (event) { pickChart(indexAt(event)); });
     announceChartSelection();
     $("h-chart-note").textContent = t("hist.chart") + " 0–" + fmtInt(yMax) + " " + t("unit.speed") + ".";
   }
@@ -1782,26 +1912,68 @@
       el("span", "num", t("hist.col.ping") + " (ms)")
     );
     list.append(head);
-    items.slice(first, first + size).forEach(function (result, index) {
+    var page = items.slice(first, first + size);
+    listShowsTraces = showMiniTraces.matches && state.view === "history";
+    var thumbnails = listShowsTraces ? loadDetails(page.map(function (result) { return result.id; })) : [];
+    page.forEach(function (result, index) {
       var bar = el("details", animate ? "bar row-in" : "bar");
       if (animate) {
         bar.style.setProperty("--i", String(Math.min(index, 12))); // one after another
       }
       var summary = el("summary");
+      var thumbnail = svgEl("svg", "mini");
+      thumbnail.setAttribute("aria-hidden", "true");
       summary.append(
         el("span", "bar-date", fmtDate(result.ts)),
         el("span", "bar-prov", joined([result.provider_name || result.provider, serverLabel(result.server)])),
-        miniTrace(result),
+        thumbnail,
         el("span", "bar-num bar-down", fmtSpeed(speedOf(result, "download"))),
         el("span", "bar-num bar-up", fmtSpeed(speedOf(result, "upload"))),
         el("span", "bar-num bar-ping", fmtMs(latencyOf(result)))
       );
+      if (thumbnails[index]) {
+        thumbnails[index].then(function (detail) {
+          if (thumbnail.isConnected) {
+            thumbnail.replaceWith(miniTrace(detail));
+          }
+        }).catch(function () {
+          // Thumbnails are decorative. Opening the row retries and reports a detail error.
+        });
+      }
       bar.append(summary);
-      bar.addEventListener("toggle", function () {
-        if (bar.open && !bar.dataset.filled) {
-          bar.dataset.filled = "1";
-          fillPanel(bar, result);
+      bar.addEventListener("toggle", function loadPanel() {
+        if (!bar.open || bar.dataset.filled) {
+          return;
         }
+        bar.dataset.filled = "1";
+        var status = el("div", "bar-actions");
+        var note = el("span", "note", t("hist.loading"));
+        note.setAttribute("role", "status");
+        status.append(note);
+        bar.append(status);
+        loadDetails([result.id])[0].then(function (detail) {
+          if (bar.isConnected) {
+            status.remove();
+            fillPanel(bar, detail);
+          }
+        }, function (error) {
+          if (!bar.isConnected || state.gate) {
+            return;
+          }
+          note.textContent = errorText(error);
+          var retry = el("button", "btn", t("err.retry"));
+          retry.type = "button";
+          retry.addEventListener("click", function () {
+            status.remove();
+            delete bar.dataset.filled;
+            if (error.code === "history_changed") {
+              loadHistory(t("err.history_changed"));
+            } else {
+              loadPanel();
+            }
+          });
+          status.append(retry);
+        });
       });
       list.append(bar);
     });
@@ -1935,10 +2107,8 @@
 
   function renderHistory(motion) {
     var data = state.history;
-    if (!data) {
-      return;
-    }
-    var all = data.items || [];
+    historyLanguage = lang;
+    var all = data ? data.items : [];
     var empty = !all.length;
     ["h-down", "h-up", "h-ping", "h-list"].forEach(function (id) {
       $(id).hidden = empty;
@@ -1946,9 +2116,12 @@
     ["h-head", "h-chart", "h-table"].forEach(function (name) {
       document.querySelector("." + name).hidden = empty;
     });
-    $("h-empty").hidden = !empty;
+    $("h-empty").hidden = !empty || !data;
     if (empty) {
       $("h-pager").hidden = true;
+      if (!data) {
+        return;
+      }
       $("h-empty-title").textContent = t(data.enabled === false ? "hist.disabled" : "hist.empty");
       $("h-empty-sub").textContent = data.enabled === false ? "" : t("hist.empty.sub");
       return;
@@ -1999,7 +2172,41 @@
     return text;
   }
 
+  function resetDownload() {
+    var link = $("h-download");
+    if (link.hasAttribute("href")) {
+      var url = link.href;
+      link.removeAttribute("href");
+      window.setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+    }
+    link.hidden = true;
+  }
+
   function exportCsv() {
+    if (!state.history || state.historyLoading || state.historyError || state.exporting) {
+      return;
+    }
+    var filter = state.historyFilter;
+    state.exporting = true;
+    state.historyNotice = t("hist.exporting");
+    resetDownload();
+    historyFeedback();
+    api("GET", "/history").then(function (data) {
+      var items = data.items.filter(function (item) { return !filter || item.provider === filter; });
+      if (!items.length) {
+        return loadHistory(t("err.history_changed"));
+      }
+      downloadCsv(items);
+      state.historyNotice = "";
+    }).catch(function (error) {
+      state.historyNotice = errorText(error);
+    }).finally(function () {
+      state.exporting = false;
+      historyFeedback();
+    });
+  }
+
+  function downloadCsv(items) {
     var rows = [
       [
         "date",
@@ -2029,7 +2236,7 @@
         "upload_nas_limit"
       ]
     ];
-    filteredHistory().forEach(function (result) {
+    items.forEach(function (result) {
       var server = result.server || {};
       var client = result.client || {};
       var ping = result.ping || {};
@@ -2071,28 +2278,33 @@
       })
       .join("\r\n");
     var url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
-    var link = el("a");
+    var link = $("h-download");
     link.href = url;
-    link.download = "naspeed-history.csv";
-    document.body.append(link);
+    // The link also works with a fresh user gesture when a browser blocks the synthetic click.
+    link.hidden = false;
     link.click();
-    link.remove();
-    window.setTimeout(function () {
-      URL.revokeObjectURL(url);
-    }, 2000);
   }
 
   function clearHistory() {
-    var count = state.history ? (state.history.items || []).length : 0;
-    confirmDialog(t("hist.clear.title"), tn("hist.clear.body", count), t("hist.clear")).then(function (yes) {
+    var data = state.history;
+    if (!data || !data.items.length || state.historyLoading || state.historyError) {
+      return;
+    }
+    confirmDialog(t("hist.clear.title"), tn("hist.clear.body", data.items.length), t("hist.clear")).then(function (yes) {
       if (!yes) {
         return;
       }
-      api("POST", "/history/clear", {}).then(function () {
+      api("POST", "/history/clear", { revision: data.revision }).then(function () {
         state.pinned = null;
         state.lastResult = null;
         loadHistory();
-      }, historyFailed);
+      }, function (error) {
+        if (error.code === "history_changed") {
+          loadHistory(t("err.history_changed"));
+        } else {
+          historyFailed(error);
+        }
+      });
     });
   }
 
@@ -2268,6 +2480,10 @@
 
   /* ---- Views and events ------------------------------------------------- */
 
+  function updateChartSteps() {
+    $("h-chart-step").hidden = state.chartItems.length < 2 || !touchScreen.matches;
+  }
+
   function showView(name) {
     if (VIEWS.indexOf(name) < 0) {
       return;
@@ -2286,8 +2502,16 @@
       }
     }
     if (name === "history") {
-      state.historyPage = 1;
-      renderHistory();
+      var backToFirst = changed && state.historyPage !== 1;
+      if (backToFirst) {
+        state.historyPage = 1;
+      }
+      if (!state.history || historyLanguage !== lang) {
+        renderHistory();
+      } else if (backToFirst || (showMiniTraces.matches && !listShowsTraces)) {
+        renderHistoryList(filteredHistory());
+      }
+      updateChartSteps();
       loadHistory();
     }
     if (name === "test") {
@@ -2322,10 +2546,10 @@
       }
     });
     window.addEventListener("focus", resync);
-    // Closing the window stops the test: a keepalive request outlives the page.
+    // Only the window that started this test should stop it on close.
     window.addEventListener("pagehide", function () {
-      if (state.running && !state.gate) {
-        var options = requestOptions("POST", {});
+      if (state.running && !state.gate && state.startedTestId && state.test && state.test.id === state.startedTestId) {
+        var options = requestOptions("POST", { id: state.startedTestId });
         options.keepalive = true;
         fetch(API + "/test/stop", options).catch(function () {});
       }
@@ -2339,6 +2563,16 @@
     };
     if (darkScheme.addEventListener) {
       darkScheme.addEventListener("change", schemeChanged);
+    }
+    if (showMiniTraces.addEventListener) {
+      showMiniTraces.addEventListener("change", function () {
+        if (showMiniTraces.matches && state.view === "history" && state.history) {
+          renderHistoryList(filteredHistory());
+        }
+      });
+    }
+    if (touchScreen.addEventListener) {
+      touchScreen.addEventListener("change", updateChartSteps);
     }
 
 
@@ -2375,8 +2609,10 @@
       event.preventDefault();
       var index = Array.prototype.indexOf.call(radios, event.target);
       var next = radios[(Math.max(index, 0) + step + radios.length) % radios.length];
+      for (var i = 0; i < radios.length; i += 1) {
+        radios[i].tabIndex = radios[i] === next ? 0 : -1;
+      }
       next.focus();
-      next.click();
     });
 
     $("server-change").addEventListener("click", openServers);
@@ -2428,6 +2664,7 @@
     });
 
     $("h-filter").addEventListener("change", function (event) {
+      resetDownload();
       state.historyFilter = event.target.value;
       state.historyPage = 1;
       renderHistory("fresh");
@@ -2452,6 +2689,9 @@
       }
     });
     $("h-export").addEventListener("click", exportCsv);
+    $("h-chart-prev").addEventListener("click", function () { pickChart(state.chartIndex - 1, true); });
+    $("h-chart-next").addEventListener("click", function () { pickChart(state.chartIndex + 1, true); });
+    $("h-retry").addEventListener("click", function () { loadHistory(); });
     $("h-clear").addEventListener("click", clearHistory);
     $("h-page-prev").addEventListener("click", function () {
       turnPage(state.historyPage - 1);

@@ -119,7 +119,9 @@ def build_parser():
     parser.add_argument("--version", action="version", version=__version__)
     sub = parser.add_subparsers(dest="command")
 
-    serve = sub.add_parser("serve", help="run the HTTP API server (default)")
+    # Defaults on the subparser would overwrite options supplied before "serve".
+    serve = sub.add_parser("serve", help="run the HTTP API server (default)",
+                           argument_default=argparse.SUPPRESS)
     for target in (parser, serve):
         target.add_argument("--dev", action="store_true", help="development mode: TCP only, no auth")
         target.add_argument("--socket", metavar="PATH", help="Unix socket path ('' to disable)")

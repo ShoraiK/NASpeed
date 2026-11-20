@@ -9,10 +9,10 @@ API (all under ``/api``; the web UI calls it through the TOS proxy as
     GET  /api/state                live state of the current/last test
     GET  /api/servers?provider=&q= candidate servers, best latency first
     POST /api/test/start           {provider, server, options, accept_notice, hide_notice}
-    POST /api/test/stop
-    GET  /api/history?limit=
+    POST /api/test/stop            {id} optional id guards against stopping a later test
+    GET  /api/history?limit=&summary=1&ids=   optional projection and detail selection
     POST /api/history/delete       {id}
-    POST /api/history/clear
+    POST /api/history/clear        {revision} optional history revision
     GET  /api/settings
     POST /api/settings             partial settings object
     GET  /health                   no authentication, for health checks
@@ -30,7 +30,7 @@ from .engine import netutil
 from .engine.runner import TestError
 from .httpd import Response
 from .providers import Context, ProviderError
-from .store import CONNECTION_CHOICES, DURATIONS, HISTORY_HARD_LIMIT, IP_VERSIONS
+from .store import CONNECTION_CHOICES, DURATIONS, HISTORY_HARD_LIMIT, IP_VERSIONS, StorageError
 
 logger = log.get("api")
 
@@ -173,6 +173,8 @@ class App:
                 response = handler(request)
             except ApiError as exc:
                 response = Response.error(exc.status, exc.code, exc.detail, exc.extra)
+            except StorageError:
+                response = Response.error(503, "storage_error")
             except ValueError as exc:
                 response = Response.error(400, "bad_request", exc)
             return self._finish(request, response)
@@ -267,40 +269,57 @@ class App:
         provider = self._provider(body.get("provider"))
         settings = self.store.get_settings()
         accepted = body.get("accept_notice") is True
+        notice_patch = {}
         if provider.notice and not settings.get("accepted_notices", {}).get(provider.notice):
             if accepted:
-                self.store.update_settings({"accepted_notices": {provider.notice: int(time.time())}})
+                notice_patch["accepted_notices"] = {provider.notice: int(time.time())}
             else:
                 raise ApiError(412, "notice_required", extra={"notice": provider.notice})
         if provider.notice and accepted and body.get("hide_notice") is True:
             # "Don't show this again", ticked in the notice the user has just accepted.
-            self.store.update_settings({"hidden_notices": {provider.notice: True}})
+            notice_patch["hidden_notices"] = {provider.notice: True}
+        if notice_patch:
+            self.store.update_settings(notice_patch)
         options = body.get("options") if isinstance(body.get("options"), dict) else None
         try:
             state = self.runner.start(provider.id, str(body.get("server") or ""), options, watched=True)
         except TestError as exc:
             raise ApiError(409 if exc.code == "busy" else 400, exc.code, exc.detail)
+        payload = {"running": True, "test": state}
         if settings.get("default_provider") != provider.id:
-            self.store.update_settings({"default_provider": provider.id}, tuple(self.registry))
-        return Response.json({"running": True, "test": state})
+            try:
+                self.store.update_settings({"default_provider": provider.id}, tuple(self.registry))
+            except StorageError:
+                payload["settings_error"] = "storage_error"
+        return Response.json(payload)
 
     def _stop(self, request):
-        self.runner.stop()
+        body = request.json()
+        if "id" in body:
+            if not isinstance(body["id"], str) or not body["id"]:
+                raise ApiError(400, "bad_request", "id must be a nonempty string")
+            if not self.runner.stop(body["id"]):
+                raise ApiError(409, "test_changed")
+        else:
+            self.runner.stop()
         return Response.json({"ok": True})
 
     def _history(self, request):
-        settings = self.store.get_settings()
         try:
             limit = int(request.query.get("limit") or 0)
         except ValueError:
             limit = 0
-        items = self.store.list_history(limit if limit > 0 else None)
-        return Response.json({
-            "items": items,
-            "count": self.store.history_count(),
-            "enabled": bool(settings.get("save_history", True)),
-            "limit": int(settings.get("history_limit", 300)),
-        })
+        ids = None
+        if "ids" in request.query:
+            selected = request.query["ids"]
+            if len(selected) > 6500:
+                raise ApiError(400, "bad_request", "ids is too long")
+            values = selected.split(",") if selected else []
+            if len(values) > 100 or any(not value or len(value) > 64 for value in values):
+                raise ApiError(400, "bad_request", "up to 100 ids of 1 to 64 characters each")
+            ids = set(values)
+        return Response.json(self.store.history_page(
+            limit if limit > 0 else None, ids, request.query.get("summary") == "1"))
 
     def _history_delete(self, request):
         result_id = str(request.json().get("id") or "")
@@ -309,7 +328,11 @@ class App:
         return Response.json({"ok": self.store.delete_result(result_id)})
 
     def _history_clear(self, request):
-        self.store.clear_history()
+        body = request.json()
+        if "revision" in body and not isinstance(body["revision"], str):
+            raise ApiError(400, "bad_request", "revision must be a string")
+        if not self.store.clear_history(body.get("revision")):
+            raise ApiError(409, "history_changed")
         return Response.json({"ok": True})
 
     def _settings_get(self, request):

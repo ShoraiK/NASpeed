@@ -33,17 +33,13 @@ class LibreSpeed(Provider):
     name = "LibreSpeed"
     homepage = "https://librespeed.org"
 
-    def __init__(self):
-        super().__init__()
-        self._raw = {}
-        self._endpoints = {}
-
     def _load(self, ctx):
         data = netutil.fetch_json(LIST_URL)
         if not isinstance(data, list):
             raise ProviderError("bad_response", "server list")
         servers = []
         targets = {}
+        routes = {}
         for item in data:
             if not isinstance(item, dict) or not item.get("server"):
                 continue
@@ -55,11 +51,7 @@ class LibreSpeed(Provider):
                 continue
             port = parts.port or (443 if parts.scheme == "https" else 80)
             server_id = str(item.get("id", len(servers)))
-            self._raw[server_id] = {
-                "base": base,
-                "scheme": parts.scheme,
-                "host": parts.hostname,
-                "port": port,
+            routes[server_id] = {
                 "dl": _join(base, item.get("dlURL")),
                 "ul": _join(base, item.get("ulURL")),
                 "ip": _join(base, item.get("getIpURL")),
@@ -82,14 +74,16 @@ class LibreSpeed(Provider):
             })
             targets[server_id] = (parts.scheme, parts.hostname, port)
         ranked, endpoints = rank_servers(servers, targets, ctx.ip_version)
-        self._endpoints.update(endpoints)
-        return ranked
+        return ranked, endpoints, routes
 
-    def list_servers(self, ctx, query=""):
+    def _catalogue(self, ctx):
         try:
-            servers = self._cached(("servers", ctx.ip_version), lambda: self._load(ctx), 600)
+            return self._cached(("servers", ctx.ip_version), lambda: self._load(ctx), 600)
         except netutil.NetError as exc:
             raise ProviderError("provider_unavailable", exc.detail)
+
+    def list_servers(self, ctx, query=""):
+        servers, _, _ = self._catalogue(ctx)
         return [dict(s) for s in servers]
 
     def _client(self, endpoint, url):
@@ -132,10 +126,10 @@ class LibreSpeed(Provider):
         return {"ip": ip.strip(), "isp": isp, "country": country}
 
     def open(self, ctx, server_id=""):
-        servers = self.list_servers(ctx)
+        servers, endpoints, routes = self._catalogue(ctx)
         server = pick_server(servers, server_id)
-        raw = self._raw.get(server["id"])
-        endpoint = self._endpoints.get(server["id"])
+        raw = routes.get(server["id"])
+        endpoint = endpoints.get(server["id"])
         if raw is None or endpoint is None or server.get("latency_ms") is None:
             raise ProviderError("server_unreachable", server.get("host", ""))
         endpoint = ensure_family(endpoint, ctx.ip_version)

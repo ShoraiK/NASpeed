@@ -1007,6 +1007,15 @@ main {
   flex: 1 1 0;
 }
 
+.h-feedback {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 12px var(--pad);
+}
+
 .h-chart {
   grid-column: span 8;
   height: 292px;
@@ -1047,6 +1056,18 @@ main {
 
 .h-chart .note {
   padding: 10px var(--pad) 14px;
+}
+
+.h-chart-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 var(--pad) 10px;
+}
+
+.h-chart-step button {
+  min-width: 44px;
+  min-height: 44px;
 }
 
 .h-table {
@@ -1793,6 +1814,39 @@ td {
 
   .t-prov {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Keep the setup beside Start until there is a measurement to show. */
+  .board-test[data-setup="true"] {
+    grid-template-areas:
+      "status status"
+      "prov prov"
+      "server server"
+      "down down"
+      "up up"
+      "ping route";
+  }
+
+  .board-test[data-setup="true"] .t-prov {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .board-test[data-setup="true"] .t-server {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    min-height: 0;
+    padding: 16px;
+  }
+
+  .board-test[data-setup="true"] .t-server .tile-body {
+    flex: 1 1 12em;
+    width: auto;
+  }
+
+  .board-test[data-setup="true"] .t-down,
+  .board-test[data-setup="true"] .t-up {
+    height: auto;
   }
 
   .prov {

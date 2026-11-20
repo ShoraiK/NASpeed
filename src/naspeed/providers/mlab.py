@@ -58,10 +58,6 @@ class MLab(Provider):
     notice_url = PRIVACY_URL
     single_stream = True
 
-    def __init__(self):
-        super().__init__()
-        self._endpoints = {}
-
     def _locate(self):
         url = LOCATE_URL % (APP_ID, urllib.parse.quote(__version__.split("-")[0]))
         try:
@@ -102,25 +98,23 @@ class MLab(Provider):
     def _rank(self, results, ctx):
         servers = [self._server(item) for item in results]
         targets = {s["id"]: ("wss", s["host"], 443) for s in servers}
-        ranked, endpoints = rank_servers(servers, targets, ctx.ip_version)
-        self._endpoints.update(endpoints)
-        return ranked
+        return rank_servers(servers, targets, ctx.ip_version)
 
     def list_servers(self, ctx, query=""):
-        servers = self._cached(("servers", ctx.ip_version), lambda: self._rank(self._locate(), ctx), 120)
+        servers, _ = self._cached(("servers", ctx.ip_version), lambda: self._rank(self._locate(), ctx), 120)
         return [dict(s) for s in servers]
 
     def open(self, ctx, server_id=""):
         # Access tokens are short-lived: always ask for fresh URLs.
         results = self._locate()
-        ranked = self._rank(results, ctx)
+        ranked, endpoints = self._rank(results, ctx)
         try:
             server = pick_server(ranked, server_id)
         except ProviderError:
             # The preferred machine is not offered right now: take the best one.
             server = pick_server(ranked, "")
         item = next(r for r in results if str(r["machine"]) == server["id"])
-        endpoint = self._endpoints.get(server["id"])
+        endpoint = endpoints.get(server["id"])
         if endpoint is None:
             raise ProviderError("server_unreachable", server.get("host", ""))
         endpoint = ensure_family(endpoint, ctx.ip_version)

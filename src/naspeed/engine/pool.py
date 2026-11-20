@@ -104,6 +104,10 @@ class _ProcessWorker:
             self.proc.wait(2)
         except (OSError, subprocess.TimeoutExpired):
             pass
+        if self.proc.poll() is not None:
+            # Drain the final counters and any late HTTP response before the
+            # parent reads the outcome of this phase.
+            self._reader.join()
         for stream in (self.proc.stdout, self.proc.stdin):
             try:
                 if stream:

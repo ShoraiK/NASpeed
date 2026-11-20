@@ -36,7 +36,9 @@ import time
 from . import netutil
 
 RECV_BUFFER = 1 << 20
+RECV_SAMPLE_SECONDS = 0.125
 UPLOAD_BLOCK = 1 << 20
+UPLOAD_PROBE_BYTES = 1024
 MIN_CHUNK = 16 * 1024
 MAX_CHUNK = 1 << 20
 REPORT_INTERVAL = 0.025
@@ -171,6 +173,9 @@ def _http_download(spec, endpoint, idx, ctr, stop):
     counts = ctr.bytes
     conn = None
     failures = 0
+    bulk = False
+    sample_time = time.perf_counter()
+    next_sample = RECV_BUFFER
     while not stop.is_set():
         try:
             if conn is None:
@@ -184,12 +189,19 @@ def _http_download(spec, endpoint, idx, ctr, stop):
             if resp.status != 200:
                 raise TransferError("HTTP %d" % resp.status, fatal=400 <= resp.status < 500)
             ctr.active[idx] = 1
-            readinto = resp.readinto
+            # Start with bytes as they arrive. Only fill a whole MiB in one
+            # call once the peer has delivered that much in a short interval.
+            read1, readinto = resp.read1, resp.readinto
             while not stop.is_set():
-                got = readinto(view)
+                got = readinto(view) if bulk else len(read1(64 * 1024))
                 if not got:
                     break
                 counts[idx] += got
+                if counts[idx] >= next_sample:
+                    now = time.perf_counter()
+                    bulk = now - sample_time <= RECV_SAMPLE_SECONDS
+                    sample_time = now
+                    next_sample = counts[idx] + RECV_BUFFER
             failures = 0
         except (OSError, http.client.HTTPException, TransferError) as exc:
             ctr.active[idx] = 0
@@ -210,7 +222,10 @@ def _http_upload(spec, endpoint, idx, ctr, stop):
     timeout = float(spec.get("timeout", 15))
     verify = bool(spec.get("verify", True))
     full_size = int(spec["size"])
-    size = _first_size(full_size, idx)
+    # Long measurement requests are cut off at the deadline. Verify that
+    # this endpoint accepts POSTs before counting measurement bytes.
+    probing = True
+    size = min(UPLOAD_PROBE_BYTES, full_size)
     counts = ctr.bytes
     state = {"chunk": MIN_CHUNK}
     conn = None
@@ -226,7 +241,8 @@ def _http_upload(spec, endpoint, idx, ctr, stop):
             count = min(chunk, size - sent)
             yield payload[:count]
             sent += count
-            counts[idx] += count
+            if not probing:
+                counts[idx] += count
             now = time.perf_counter()
             elapsed = now - last
             last = now
@@ -253,11 +269,16 @@ def _http_upload(spec, endpoint, idx, ctr, stop):
             if not state["complete"]:
                 break  # stopped half-way through the body: just drop the connection
             resp = conn.getresponse()
-            resp.read()
             if resp.status not in (200, 201, 202, 204):
-                raise TransferError("HTTP %d" % resp.status, fatal=400 <= resp.status < 500)
+                # A refused probe invalidates the endpoint. A refused data
+                # request invalidates bytes already present in live counters.
+                reason = "HTTP %d" % resp.status
+                ctr.set_info(upload_rejection=reason)
+                raise TransferError(reason, fatal=True)
+            resp.read()
             failures = 0
-            size = full_size
+            size = _first_size(full_size, idx) if probing else full_size
+            probing = False
         except (OSError, http.client.HTTPException, TransferError) as exc:
             ctr.active[idx] = 0
             _close(conn)
@@ -608,6 +629,8 @@ def worker_main():
     for thread in threads:
         thread.join(0.5)
     try:
+        if ctr.info_seq != last_info:
+            out.write(b"I " + json.dumps(ctr.info).encode("utf-8") + b"\n")
         out.write(b"P %d 0 %d\nD\n" % (ctr.total(), ctr.errors))
         out.flush()
     except OSError:

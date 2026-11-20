@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import urllib.parse
 import xml.etree.ElementTree as ElementTree
+from collections import OrderedDict
 
 from ..engine import netutil
 from .base import HttpSession, Provider, ProviderError, ensure_family, pick_server, rank_servers
@@ -19,6 +20,9 @@ from .base import HttpSession, Provider, ProviderError, ensure_family, pick_serv
 CONFIG_URL = "https://www.speedtest.net/speedtest-config.php"
 SERVERS_URL = "https://www.speedtest.net/api/js/servers?engine=js&limit=%d&https_functional=true"
 SERVER_LIMIT = 20
+# Keep recently offered search results available for manual selection even
+# after their probe data expires. Probe a chosen server again before use.
+KNOWN_SERVER_LIMIT = 512
 DEFAULT_PORT = 8080
 # Requests are long on purpose: one request keeps a connection busy for the
 # whole measurement, so there are no gaps between requests.
@@ -35,8 +39,7 @@ class Ookla(Provider):
 
     def __init__(self):
         super().__init__()
-        self._known = {}
-        self._endpoints = {}
+        self._known = OrderedDict()
 
     def _client(self):
         def load():
@@ -73,7 +76,7 @@ class Ookla(Provider):
         except ValueError:
             return str(value), DEFAULT_PORT
 
-    def list_servers(self, ctx, query=""):
+    def _catalogue(self, ctx, query=""):
         query = (query or "").strip()[:60]
 
         def load():
@@ -102,16 +105,21 @@ class Ookla(Provider):
                         client.get("lat"), client.get("lon"), item.get("lat"), item.get("lon")),
                 })
                 targets[server_id] = ("http", host, port)
-            ranked, endpoints = rank_servers(servers, targets, ctx.ip_version)
-            self._endpoints.update(endpoints)
-            for server in ranked:
-                self._known[server["id"]] = server
-            return ranked
+            return rank_servers(servers, targets, ctx.ip_version)
 
         try:
-            servers = self._cached(("servers", query, ctx.ip_version), load)
+            return self._cached(("servers", query, ctx.ip_version), load)
         except netutil.NetError as exc:
             raise ProviderError("provider_unavailable", exc.detail)
+
+    def list_servers(self, ctx, query=""):
+        servers, _ = self._catalogue(ctx, query)
+        with self._cache_lock:
+            for server in servers:
+                self._known[server["id"]] = server
+                self._known.move_to_end(server["id"])
+            while len(self._known) > KNOWN_SERVER_LIMIT:
+                self._known.popitem(last=False)
         return [dict(s) for s in servers]
 
     def _hello(self, endpoint):
@@ -123,18 +131,17 @@ class Ookla(Provider):
         return status == 200 and body.lower().startswith(b"hello")
 
     def open(self, ctx, server_id=""):
-        servers = self.list_servers(ctx)
+        servers, endpoints = self._catalogue(ctx)
         if server_id and server_id not in {s["id"] for s in servers}:
             # A server picked from an earlier search: probe just that one.
-            known = self._known.get(str(server_id))
+            with self._cache_lock:
+                known = self._known.get(str(server_id))
             if known is None:
                 raise ProviderError("server_not_found", server_id)
             host, port = self._split_host(known["host"])
-            ranked, endpoints = rank_servers([dict(known)], {known["id"]: ("http", host, port)}, ctx.ip_version)
-            self._endpoints.update(endpoints)
-            servers = ranked
+            servers, endpoints = rank_servers([dict(known)], {known["id"]: ("http", host, port)}, ctx.ip_version)
         server = pick_server(servers, server_id)
-        endpoint = self._endpoints.get(server["id"])
+        endpoint = endpoints.get(server["id"])
         if endpoint is None or server.get("latency_ms") is None:
             raise ProviderError("server_unreachable", server.get("host", ""))
         endpoint = ensure_family(endpoint, ctx.ip_version)

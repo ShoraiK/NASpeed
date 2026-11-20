@@ -4,6 +4,16 @@ Notable changes in each NASpeed version, newest first. Every 0.x version is a be
 
 Each section opens with a one-line summary that the package build copies into the App Center release note, so keep that line plain text and no longer than 300 characters. The release workflow adds the whole section to the GitHub release notes, which turn every line break into a visible one, so write each paragraph and bullet on a single line.
 
+## 0.4.2
+
+Slow downloads register progress as data arrives, rejected uploads report a failure, and the interface reports when the NAS cannot save a result. History loads details on demand and checks for changes before deleting all results.
+
+- Slow downloads count bytes as they arrive. Each HTTP upload connection starts with a small POST to check that the server accepts uploads. An explicit rejection during the probe or the measurement fails the test. New results distinguish bytes sent or received inside the measurement window from total measurement traffic including warm-up.
+- Concurrent requests for the same server list share a lookup. Cached searches expire and the number kept in memory is bounded.
+- A disk write failure is reported when changing settings or history. A completed measurement stays on the board if saving it fails.
+- History fetches summaries for the chart and medians, and full measurements for the visible rows or a CSV export. It refreshes after a test finishes. Touch controls step through individual results in the chart. Deleting all results checks that the set being deleted still matches the confirmation.
+- Closing a window that is following another window's test lets that test continue. Arrow keys browse the server picker and Enter or Space selects the server. Narrow windows show the provider and server together near the Start button during initial setup.
+
 ## 0.4.1
 
 A packaging update: the source repository now includes config.ini, naspeed.lang and the control file exactly as the package installs them, and the package lists a GitHub noreply address as its maintainer. The app itself does not change.

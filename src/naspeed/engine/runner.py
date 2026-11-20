@@ -28,7 +28,7 @@ from collections import deque
 
 from .. import __version__, log
 from ..providers.base import Context, ProviderError
-from ..store import CONNECTION_CHOICES, DURATIONS, IP_VERSIONS, new_id
+from ..store import CONNECTION_CHOICES, DURATIONS, IP_VERSIONS, StorageError, new_id
 from . import cpu, latency, netutil
 from .pool import TransferPool
 
@@ -214,8 +214,12 @@ class TestRunner:
                                  name="test-watch", daemon=True).start()
         return self.snapshot()
 
-    def stop(self):
-        self._stop.set()
+    def stop(self, test_id=None):
+        with self._lock:
+            if test_id is not None and (self._state is None or self._state["id"] != test_id):
+                return False
+            self._stop.set()
+            return True
 
     def _watch(self, stop, thread):
         """Stop the test when nobody watches it any more (see UNWATCHED_TIMEOUT)."""
@@ -309,11 +313,13 @@ class TestRunner:
                 "ip_family": family,
             }
             saved = False
-            if self.store.get_settings().get("save_history", True):
-                self.store.add_result(result)
-                saved = True
+            save_error = None
+            try:
+                saved = self.store.add_result(result, if_enabled=True) is not None
+            except StorageError:
+                save_error = "storage_error"
             self._set(status="done", phase="done", progress=1.0, result=result, saved=saved,
-                      client=client or None, elapsed=result["duration"])
+                      save_error=save_error, client=client or None, elapsed=result["duration"])
             logger.info("test finished: provider=%s down=%.1f Mbps up=%.1f Mbps ping=%s ms",
                         provider.id, download["mbps"] if download else 0.0,
                         upload["mbps"] if upload else 0.0, ping.get("latency"))
@@ -398,6 +404,8 @@ class TestRunner:
                     raise _Cancelled()
                 t = time.perf_counter() - t0
                 snap = pool.snapshot()
+                if snap.info.get("upload_rejection"):
+                    raise TestError("transfer_failed", snap.info["upload_rejection"])
                 end = (t, snap.bytes)
                 samples.append(end)
                 while len(samples) > 2 and samples[1][0] <= t - LIVE_WINDOW:
@@ -469,13 +477,16 @@ class TestRunner:
             self._pool = None
             loaded = probe.finish()
 
+        rejection = pool.snapshot().info.get("upload_rejection")
+        if rejection:
+            raise TestError("transfer_failed", rejection)
         if snap is None or end[1] <= 0:
             raise TestError("transfer_failed", snap.last_error if snap else "")
 
         measured = window_start is not None and end[0] - window_start[0] >= 0.5
-        complete = measured and end[0] - window_start[0] >= window * 0.5
-        if snap.finished and not complete and not session.self_terminating:
-            # Every connection died before we had a usable measurement.
+        if snap.finished and (not session.self_terminating or snap.errors):
+            # HTTP streams run until we stop them. A pool which quit on
+            # its own cannot substantiate a full measurement window.
             raise TestError("transfer_failed", snap.last_error)
         if measured:
             seconds = end[0] - window_start[0]
@@ -486,12 +497,17 @@ class TestRunner:
         else:
             seconds = max(end[0], 0.001)
             transferred = end[1]
+        if transferred <= 0:
+            raise TestError("no_data", snap.last_error)
         mbps = transferred * 8 / seconds / 1e6
 
         result = {
             "mbps": round(mbps, 2),
+            # bytes remains total traffic, including warm-up, for the UI and
+            # existing history consumers. measured_bytes / seconds is the rate.
             "bytes": int(end[1]),
-            "seconds": round(seconds, 2),
+            "measured_bytes": int(transferred),
+            "seconds": seconds,
             "peak_mbps": round(max(peak, mbps), 2),
             "streams": pool.streams,
             "latency": loaded.get("latency"),
