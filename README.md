@@ -24,7 +24,6 @@ Measure the connection your TerraMaster NAS actually gets — not the one your b
   <a href="#how-it-works">How it works</a> ·
   <a href="#getting-started">Getting started</a> ·
   <a href="#permissions-ports-and-files">Permissions</a> ·
-  <a href="#roadmap">Roadmap</a> ·
   <a href="#license">License</a>
 </p>
 
@@ -41,8 +40,8 @@ Measure the connection your TerraMaster NAS actually gets — not the one your b
 > **Beta.** The backend and the web interface are complete, and the first installable TOS 7 package is
 > available on the [Releases page](https://github.com/ShoraiK/NASpeed/releases). On one x86_64 TerraMaster NAS it
 > has been installed, upgraded, uninstalled and reinstalled, used for real tests and checked with an expired TOS
-> session. The service also restarted automatically after a NAS reboot during testing of version 0.3.0. See how to [install it](#install-on-tos-7-beta)
-> and the [roadmap](#roadmap).
+> session. The service also restarted automatically after a NAS reboot during testing of version 0.3.0.
+> See [Install on TOS 7 (beta)](#install-on-tos-7-beta).
 
 > [!WARNING]
 > **Do not install version 0.2.0 on TOS 7.** Its package fails during installation. Download **0.2.2 or newer**
@@ -171,19 +170,14 @@ The provider is remembered when a test starts, not merely when its tile is selec
 
 ### Install on TOS 7 (beta)
 
-NASpeed is not in the TerraMaster App Center yet. Download `naspeed_x86_64.deb` and `naspeed_x86_64.deb.sha256` from the [Releases page](https://github.com/ShoraiK/NASpeed/releases) and check the download on your computer. On Linux or WSL:
+The beta package is for x86_64 TerraMaster NAS models running TOS 7.
 
-```bash
-sha256sum -c naspeed_x86_64.deb.sha256   # check the download
-```
+1. On your computer, open the [NASpeed releases page](https://github.com/ShoraiK/NASpeed/releases). Under **Assets** for the newest release, download `naspeed_x86_64.deb`.
+2. In your browser, sign in to your NAS with an account that can install apps. Open **App Center** on the TOS desktop.
+3. Click **Manual Install** and select the `naspeed_x86_64.deb` file you downloaded. If TOS asks where to install it, choose a volume on the NAS, then confirm the installation.
+4. When installation finishes, go to **Installed** in App Center, find **NASpeed** and click **Open**.
 
-On Windows, compare the output of `Get-FileHash naspeed_x86_64.deb` with the hash in the `.sha256` file.
-
-Then open the **App Center** on the TOS desktop and install the `.deb` with its manual installation option. To upgrade, install a newer package the same way, on top of the installed one; your settings and history are kept.
-
-To uninstall, open NASpeed from the App Center's **Installed** list and choose **Uninstall** in the menu next to **Open**. Leave the option to also delete the app's configuration files unticked to keep your settings and history. A reinstall restores them. Ticking the option removes them, as verified on TOS 7 with NASpeed 0.3.0. See [After uninstalling](#after-uninstalling).
-
-This is how the package has been installed, upgraded, uninstalled and reinstalled on a real NAS. TerraMaster also documents `sudo dpkg -i naspeed_x86_64.deb` over SSH for developers; that route has not been tested with NASpeed.
+To update NASpeed later, repeat these steps with the new `.deb` while the existing version is still installed. Your settings and test history are preserved.
 
 ### Run the web UI
 
@@ -346,24 +340,6 @@ unticked, the following stays in the app's folder on the volume, and a reinstall
 
 TOS keeps a few files of its own in the same folder, and `dpkg` lists NASpeed as removed with its configuration
 kept (`rc`).
-
-## Roadmap
-
-- [x] Measurement engine: latency, download, upload and latency under load
-- [x] Cloudflare, Ookla and LibreSpeed providers
-- [x] M-Lab NDT7 provider *(tested against live servers over IPv4)*
-- [x] JSON API and service
-- [x] Web interface: test, history and settings — six languages, light and dark themes
-- [x] Offline test suite
-- [x] Permission, port and runtime-file reference
-- [x] Installable `.deb` package for TOS 7, built and published automatically as a GitHub Release
-- [x] Installation, upgrade, uninstall and real tests on a TerraMaster NAS, with the Python 3.10 that ships with TOS 7
-- [x] Expired TOS sessions and outdated cached interfaces handled inside TOS
-- [x] Processor-load diagnostics: every result tells whether the NAS may have limited it
-- [x] Continuous integration and reproducible package builds
-- [x] Automatic service restart after a NAS reboot (verified with 0.3.0)
-- [ ] Installation guide
-- [ ] Submission to the TerraMaster App Center
 
 ## Versioning
 
