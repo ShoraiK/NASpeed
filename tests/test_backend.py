@@ -249,6 +249,18 @@ class TestFlowTests(AppCase):
         self.call("POST", "/api/settings", {"accepted_notices": {"mlab_privacy": 1}})
         self.assertEqual(self.store.get_settings()["accepted_notices"], {})
 
+    def test_server_lookup_requires_separate_consent_and_never_starts_a_test(self):
+        query = {"provider": "mlab"}
+        with mock.patch.object(self.app.registry["mlab"], "list_servers", return_value=[]) as lookup:
+            for method, body in (("GET", None), ("POST", {}), ("POST", {"accept_lookup": "true"})):
+                self.assertEqual(self.call(method, "/api/servers", body, query=query)[0], 412)
+            lookup.assert_not_called()
+            self.assertEqual(self.call("POST", "/api/servers", {"accept_lookup": True}, query=query)[0], 200)
+            lookup.assert_called_once()
+        self.assertEqual(self.store.get_settings()["accepted_notices"], {})
+        self.assertEqual(self.call("POST", "/api/test/start", {"provider": "mlab"})[0], 412)
+        self.assertFalse(self.runner.running())
+
     def test_the_notice_is_hidden_only_when_accepted(self):
         start = {"provider": "mlab", "hide_notice": True}
         self.assertEqual(self.call("POST", "/api/test/start", start)[0], 412)
@@ -586,7 +598,7 @@ class CommandLineTests(unittest.TestCase):
         return code, output.getvalue(), runner_class
 
     def test_mlab_needs_the_privacy_notice(self):
-        for flags in ([], ["--json"]):
+        for flags in ([], ["--json"], ["--list-servers"]):
             with self.subTest(flags=flags):
                 code, output, runner_class = self.run_test_command("--provider", "mlab", *flags)
                 self.assertEqual(code, 2)
@@ -594,6 +606,13 @@ class CommandLineTests(unittest.TestCase):
                 self.assertIn("public IP address", output)
                 self.assertIn("https://www.measurementlab.net/privacy/", output)
                 runner_class.assert_not_called()
+
+    def test_cli_lookup_acceptance_only_lists_servers(self):
+        with mock.patch.object(cli, "_list_servers", return_value=0) as lookup:
+            code, _, runner = self.run_test_command("--provider", "mlab", "--list-servers", "--accept-notice")
+        self.assertEqual(code, 0)
+        lookup.assert_called_once()
+        runner.assert_not_called()
 
     def test_mlab_with_consent_starts(self):
         code, _output, runner = self.run_test_command("--provider", "mlab", "--accept-notice")
@@ -609,7 +628,7 @@ class CommandLineTests(unittest.TestCase):
 
     def test_listing_servers_does_not_start_a_test(self):
         with mock.patch.object(cli, "_list_servers", return_value=0) as list_servers:
-            code, _output, runner = self.run_test_command("--provider", "mlab", "--list-servers")
+            code, _output, runner = self.run_test_command("--provider", "ookla", "--list-servers")
         self.assertEqual(code, 0)
         list_servers.assert_called_once()
         runner.assert_not_called()

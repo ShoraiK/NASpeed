@@ -21,7 +21,9 @@ from .store import Store
 
 # Same notices the web UI asks the user to accept before the first test.
 NOTICE_TEXTS = {
-    "mlab_privacy": "M-Lab publishes the result of every test as open data, including your public IP address.",
+    "mlab_privacy": ("Looking up servers shares your public IP address and the NASpeed version "
+                     "with M-Lab and probes candidate servers. Running a test also publishes "
+                     "the results, timestamp and public IP address as open data indefinitely."),
 }
 
 
@@ -76,15 +78,15 @@ def run(command, cfg, args):
     if provider is None:
         _out("unknown provider %r; try: %s" % (args.provider, ", ".join(registry)))
         return 2
-    if args.list_servers:
-        return _list_servers(provider, args)
     if provider.notice and not getattr(args, "accept_notice", False):
-        _out("%s needs your consent before the test:" % provider.name)
+        _out("Before contacting %s:" % provider.name)
         _out("  " + NOTICE_TEXTS.get(provider.notice, provider.notice))
         if provider.notice_url:
             _out("  Details: " + provider.notice_url)
-        _out("Run the test again with --accept-notice to accept this and continue.")
+        _out("Repeat the command with --accept-notice to continue.")
         return 2
+    if args.list_servers:
+        return _list_servers(provider, args)
 
     store = Store("", persistent=False)
     runner = TestRunner(cfg, store, registry)

@@ -11,7 +11,12 @@ StartLimitIntervalSec=60
 Type=simple
 User=naspeed
 WorkingDirectory=/usr/local/naspeed
-ExecStartPre=+/bin/sh -c 'mkdir -p /usr/local/naspeed/data /usr/local/naspeed/logs /usr/local/naspeed/run && chown naspeed /usr/local/naspeed/data /usr/local/naspeed/logs /usr/local/naspeed/run && chmod 0750 /usr/local/naspeed/data /usr/local/naspeed/logs && chmod 0755 /usr/local/naspeed/run && { [ -d /var/api ] || mkdir -p /var/api; } && ln -sfn /usr/local/naspeed/run/naspeed.sock /var/api/naspeed.sock'
+UMask=0077
+# Tighten files kept from earlier releases as the service user. New log files,
+# including rotated logs, inherit the private umask.
+ExecStartPre=/usr/bin/find /usr/local/naspeed/data /usr/local/naspeed/logs -maxdepth 1 -type f -links 1 ! -perm 0600 -exec /bin/chmod 0600 -- {} +
+ExecStartPre=+/bin/mkdir -p -m 0755 /var/api
+ExecStartPre=+/bin/ln -sfnT /usr/local/naspeed/run/naspeed.sock /var/api/naspeed.sock
 ExecStart=/usr/local/naspeed/bin/naspeed
 ExecStopPost=+/bin/rm -f /var/api/naspeed.sock
 NoNewPrivileges=true

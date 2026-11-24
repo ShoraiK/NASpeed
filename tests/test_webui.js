@@ -30,6 +30,7 @@ function fixture(desktop = false) {
       querySelector() { return element("span"); },
       cloneNode() { return element(tag); },
       close() { this.open = false; },
+      showModal() { this.open = true; },
       click() { if (listeners.click) listeners.click({target:this}); },
       focus() { document.activeElement = this; },
       getBoundingClientRect() { return {left:0, width:1000}; }
@@ -71,7 +72,8 @@ function fixture(desktop = false) {
   const ui = window.testUI;
   ui.bind();
   return {ui, state:ui.state, node:id => document.getElementById(id), document, events, requests,
-    dialogs, downloads, paints, api(fn) { answer = fn; }, setDesktop(value) { desktop = value; }};
+    dialogs, downloads, paints, api(fn) { answer = fn; }, confirmWith(fn) { confirmation = fn; },
+    setDesktop(value) { desktop = value; }};
 }
 
 function snapshot(revision, items) {
@@ -185,6 +187,30 @@ async function pickingAndOwnership() {
   assert.ok(f.requests[0].endpoint.endsWith("/test/stop"));
 }
 
+async function serverLookupConsent() {
+  const f = fixture();
+  f.state.providers = [{id:"mlab", notice:"mlab_privacy", selectable_servers:true}];
+  f.state.providerId = "mlab";
+  f.confirmWith(() => Promise.resolve(false));
+  f.node("server-change").click();
+  await flush();
+  assert.equal(f.requests.length, 0);
+  assert.equal(f.dialogs.length, 1);
+  f.confirmWith(() => Promise.resolve(true));
+  f.node("server-change").click();
+  await flush();
+  assert.equal(f.requests.length, 1);
+  assert.equal(f.requests[0].method, "POST");
+  assert.equal(f.requests[0].endpoint, "/servers?provider=mlab");
+  assert.equal(f.requests[0].body.accept_lookup, true);
+  assert.equal(f.state.settings.accepted_notices, undefined);
+  f.node("dlg-servers").close();
+  f.node("server-change").click();
+  await flush();
+  assert.equal(f.dialogs.length, 2);
+  assert.equal(f.requests.length, 2);
+}
+
 async function chartAndWarning() {
   const f = fixture();
   const many = Array.from({length:1000}, (_, index) => ({...old, id:String(index)}));
@@ -253,6 +279,7 @@ async function hiddenHistoryAndThumbnails() {
   await historyActions();
   await loadingAndDetails();
   await pickingAndOwnership();
+  await serverLookupConsent();
   await chartAndWarning();
   await hiddenHistoryAndThumbnails();
   console.log("Web UI regression checks passed.");

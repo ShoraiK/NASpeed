@@ -8,6 +8,7 @@ API (all under ``/api``; the web UI calls it through the TOS proxy as
     GET  /api/info                 application, providers and settings
     GET  /api/state                live state of the current/last test
     GET  /api/servers?provider=&q= candidate servers, best latency first
+    POST /api/servers?provider=    {accept_lookup: true} for a disclosed M-Lab lookup
     POST /api/test/start           {provider, server, options, accept_notice, hide_notice}
     POST /api/test/stop            {id} optional id guards against stopping a later test
     GET  /api/history?limit=&summary=1&ids=   optional projection and detail selection
@@ -142,6 +143,7 @@ class App:
             ("GET", "/info"): self._info,
             ("GET", "/state"): self._state,
             ("GET", "/servers"): self._servers,
+            ("POST", "/servers"): self._servers,
             ("POST", "/test/start"): self._start,
             ("POST", "/test/stop"): self._stop,
             ("GET", "/history"): self._history,
@@ -251,6 +253,8 @@ class App:
 
     def _servers(self, request):
         provider = self._provider(request.query.get("provider"))
+        if provider.notice and not (request.method == "POST" and request.json().get("accept_lookup") is True):
+            raise ApiError(412, "notice_required", extra={"notice": provider.notice})
         settings = self.store.get_settings()
         ctx = Context(self.cfg, settings.get("ip_version", "auto"))
         query = request.query.get("q", "") if provider.searchable else ""

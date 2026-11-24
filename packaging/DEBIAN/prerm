@@ -6,4 +6,26 @@ set -e
 systemctl stop naspeed.service 2>/dev/null || true
 systemctl disable naspeed.service 2>/dev/null || true
 
+# App Center can detach /usr/local/naspeed before postrm. Clean the selected
+# volume while it is still attached. dpkg also calls prerm during upgrades.
+if [[ ${1:-} == remove && -d /usr/local/naspeed ]]; then
+    cd -P /usr/local/naspeed
+    if [[ $PWD != /usr/local/naspeed && ! $PWD =~ ^/Volume[0-9]+/@apps/naspeed$ ]]; then
+        echo "NASpeed: unexpected application directory during removal" >&2
+        exit 1
+    fi
+    rm -rf --one-file-system -- logs run webui .webui.* LICENSE
+    # Even on purge dpkg passes "remove" to prerm. Its recorded selection is
+    # available now, before it unlinks the path to the installed volume.
+    wanted=$(dpkg-query -W -f='${db:Status-Want}' naspeed)
+    if [[ $wanted == purge ]]; then
+        rm -rf --one-file-system -- data
+    elif [[ -d data && ! -L data ]]; then
+        find data -xdev -depth -mindepth 1 ! \( -type f \( -path data/settings.json -o -path data/history.json \) \) -delete
+        find data -maxdepth 0 -empty -delete
+    else
+        rm -f -- data
+    fi
+fi
+
 exit 0

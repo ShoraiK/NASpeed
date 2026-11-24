@@ -3,13 +3,17 @@
 # SPDX-License-Identifier: GPL-3.0-only
 set -e
 
-systemctl daemon-reload || true
-
-if [ "$1" = "purge" ]; then
+if [[ ${1:-} == remove || ${1:-} == purge ]]; then
     rm -f /var/api/naspeed.sock
-    rm -rf /usr/local/naspeed/data /usr/local/naspeed/logs /usr/local/naspeed/run
-    systemctl disable naspeed.service 2>/dev/null || true
-    systemctl daemon-reload || true
 fi
+if [[ ${1:-} == purge && -d /usr/local/naspeed ]]; then
+    cd -P /usr/local/naspeed
+    if [[ $PWD != /usr/local/naspeed && ! $PWD =~ ^/Volume[0-9]+/@apps/naspeed$ ]]; then
+        echo "NASpeed: unexpected application directory during purge" >&2
+        exit 1
+    fi
+    rm -rf --one-file-system -- data logs run webui .webui.* LICENSE
+fi
+systemctl daemon-reload || true
 
 exit 0

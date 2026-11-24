@@ -1400,6 +1400,25 @@ td {
   max-width: 68ch;
 }
 
+.provider-privacy summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.provider-privacy dt {
+  margin-top: 1em;
+  font-weight: 600;
+}
+
+.provider-privacy dd {
+  margin: 0;
+}
+
+.provider-privacy code {
+  overflow-wrap: anywhere;
+  font-size: 0.9em;
+}
+
 /* Settings > Providers: one entry per provider, two columns. */
 .s-provs {
   display: grid;

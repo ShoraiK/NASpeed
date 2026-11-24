@@ -4,6 +4,15 @@ Notable changes in each NASpeed version, newest first. Every 0.x version is a be
 
 Each section opens with a one-line summary that the package build copies into the App Center release note, so keep that line plain text and no longer than 300 characters. The release workflow adds the whole section to the GitHub release notes, which turn every line break into a visible one, so write each paragraph and bullet on a single line.
 
+## 1.0.0
+
+NASpeed now discloses provider connections, asks before looking up M-Lab servers, restricts access to private files and removes temporary data and logs on uninstall. The TOS configuration checkbox controls whether settings and history are kept.
+
+- Settings lists the endpoints, data and destinations for each provider. Looking up M-Lab servers asks for permission separately from starting a measurement, including in the CLI.
+- Uninstalling with configuration retention keeps only existing settings and history among NASpeed's own files. Choosing to delete configuration also clears these files. Updates preserve measurements and preferences.
+- The service runs as `naspeed` with a private file-creation mask. The installer sets up restricted directories and the proxy socket uses a restricted group. Systemd limits privileged operations to preparing the proxy path and managing the link.
+- The package uses a numeric stable version and sets the TOS beta flag to false.
+
 ## 0.4.2
 
 Slow downloads register progress as data arrives, rejected uploads report a failure, and the interface reports when the NAS cannot save a result. History loads details on demand and checks for changes before deleting all results.

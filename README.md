@@ -13,7 +13,7 @@ Measure the connection your TerraMaster NAS actually gets — not the one your b
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white">
   <img alt="Zero dependencies" src="https://img.shields.io/badge/dependencies-none-2fd08a?style=flat-square">
   <img alt="6 interface languages" src="https://img.shields.io/badge/UI%20languages-6-ffb52e?style=flat-square">
-  <img alt="Version 0.4.2 beta" src="https://img.shields.io/badge/version-0.4.2%20beta-fe7d37?style=flat-square">
+  <img alt="Version 1.0.0" src="https://img.shields.io/badge/version-1.0.0-fe7d37?style=flat-square">
   <a href="LICENSE"><img alt="License: GPL-3.0-only" src="https://img.shields.io/badge/license-GPL--3.0--only-a32d2a?style=flat-square"></a>
 </p>
 
@@ -37,11 +37,8 @@ Measure the connection your TerraMaster NAS actually gets — not the one your b
 </div>
 
 > [!IMPORTANT]
-> **Beta.** The backend and the web interface are complete, and the first installable TOS 7 package is
-> available on the [Releases page](https://github.com/ShoraiK/NASpeed/releases). On one x86_64 TerraMaster NAS it
-> has been installed, upgraded, uninstalled and reinstalled, used for real tests and checked with an expired TOS
-> session. The service also restarted automatically after a NAS reboot during testing of version 0.3.0.
-> See [Install on TOS 7 (beta)](#install-on-tos-7-beta).
+> **TOS 7.** TerraMaster listed NASpeed 1.0.0 in the App Center. See [Install on TOS 7](#install-on-tos-7)
+> to install a package from the [Releases page](https://github.com/ShoraiK/NASpeed/releases).
 
 > [!WARNING]
 > **Do not install version 0.2.0 on TOS 7.** Its package fails during installation. Download **0.2.2 or newer**
@@ -168,9 +165,9 @@ On first launch, without saved preferences, the interface uses **English** and s
 Change the language in **Settings**; it is saved on the NAS and restored whenever the app opens.
 The provider is remembered when a test starts, not merely when its tile is selected.
 
-### Install on TOS 7 (beta)
+### Install on TOS 7
 
-The beta package is for x86_64 TerraMaster NAS models running TOS 7.
+The package is for x86_64 TerraMaster NAS models running TOS 7.
 
 1. On your computer, open the [NASpeed releases page](https://github.com/ShoraiK/NASpeed/releases). Under **Assets** for the newest release, download `naspeed_x86_64.deb`.
 2. In your browser, sign in to your NAS with an account that can install apps. Open **App Center** on the TOS desktop.
@@ -255,13 +252,25 @@ NASpeed/
 - **Tied to your TOS session.** On the NAS the service listens on a Unix socket (mode `0660`) reachable only through the platform proxy. Every request must carry a valid session cookie and a matching CSRF token, or it is rejected with `401`.
 - **TCP access.** The service's production TCP listener checks the client network and the Host header. Requests that change state also require a custom header and a matching origin when one is present. Development mode (`--dev`) skips these checks and binds to loopback by default.
 - **Hardened static files.** When the service serves the interface itself — in development mode or on a TCP port — it adds a Content-Security-Policy and `X-Content-Type-Options: nosniff`, and blocks path traversal. Inside TOS the platform's own web server serves the interface files, with its own headers.
-- **No telemetry, no third-party resources.** NASpeed connects only to the provider you pick and its test servers. The interface loads nothing from the internet.
+- **Provider connections.** The interface loads its assets from the NAS. The NAS contacts the selected provider when you look up servers or start a test. See [Third-party APIs](#third-party-apis) or open **Settings → Data and privacy → Provider connections** before either action.
 - **Private data.** Settings and history are written atomically with `0600` permissions. History can be capped, switched off or deleted at any time.
+
+### Third-party APIs
+
+Each contacted host sees the public IP of the NAS connection. HTTP and WebSocket requests identify NASpeed and its version. Looking up servers can also open TCP connections to multiple candidates to rank their latency. Download requests specify how much data to send. Uploads contain bytes generated in memory. Your history and settings stay on the NAS. DNS names are resolved through the NAS's configured resolver.
+
+| Provider | Requests and data | Destination |
+|---|---|---|
+| Cloudflare | HTTPS GET `/meta` (fallback `/cdn-cgi/trace`) returns network and location details. GET `/__down?bytes=…` and POST `/__up?r=…` measure transfers. The requests include the provider's `Referer`. | `speed.cloudflare.com`. Network routing determines which Cloudflare data centre receives the requests. |
+| Ookla | HTTPS GET `/speedtest-config.php` and `/api/js/servers` retrieve connection details and the catalogue. The catalogue receives any search text. At the chosen node, GET `/hello`, GET `/download` and POST `/upload` carry probe, size and cache-busting parameters or test bytes. | `www.speedtest.net` for discovery. The test goes to the selected operator and country, over HTTP or HTTPS. This integration uses an unofficial protocol. |
+| LibreSpeed | HTTPS GET `/backend-servers/servers.php` retrieves the directory. The chosen node advertises the paths for GET `getIpURL` (public IP and ISP lookup), GET `dlURL` (requested size) and POST `ulURL` (generated bytes). | `librespeed.org` for discovery, then the volunteer or commercial operator of the chosen HTTP or HTTPS node. Location varies by server. |
+| M-Lab | HTTPS GET `/v2/nearest/ndt/ndt7` sends `client_name` and `client_version`. A test uses the temporary token supplied by Locate for WSS `/ndt/v7/download` and `/ndt/v7/upload`. | `locate.measurementlab.net`, then the assigned NDT7 node. M-Lab publishes the test IP, timestamp and results as open data indefinitely. Collection and storage can occur in different countries. [M-Lab privacy policy](https://www.measurementlab.net/privacy/) |
+
+For M-Lab, the server picker asks before contacting Locate. This allows a lookup in the current tab. Starting a measurement has its own notice. In the CLI, both listing M-Lab servers and running a test require `--accept-notice`.
 
 ## Permissions, ports and files
 
-What NASpeed needs on your NAS, and every file it writes there. This describes the TOS 7 package as
-installed, upgraded and uninstalled on a real NAS. TOS installs apps on a storage volume and links them into
+The following paths and permissions apply to the TOS 7 package. TOS installs apps on a storage volume and links them into
 `/usr/local`, so `/usr/local/naspeed` points to a folder such as `/Volume1/@apps/naspeed`. Source development
 mode (`--dev`) instead listens on loopback port `18321`, keeps application data in `.devdata/` inside the repository
 and writes no log file. Explicit command-line options and `NASPEED_*` environment variables can override paths.
@@ -272,11 +281,11 @@ and writes no log file. Explicit command-line options and `NASPEED_*` environmen
 |---|---|
 | Network: no inbound port | The interface is reached only through the TOS platform proxy, over the Unix socket `/usr/local/naspeed/run/naspeed.sock`, reachable as `/var/api/naspeed.sock` |
 | Network: outbound connections | To the provider you pick and its test servers, while a test runs or a server list is loaded — see [Ports](#ports) |
-| File system: `/usr/local/naspeed/data/` | Settings and test history |
-| File system: `/usr/local/naspeed/logs/` | Service log, rotated |
-| File system: `/usr/local/naspeed/run/` | Holds the socket the TOS proxy connects to |
+| File system: `/usr/local/naspeed/data/` | Private settings and test history, directory mode `0700`, files `0600` |
+| File system: `/usr/local/naspeed/logs/` | Private service log and rotations, directory mode `0700`, files `0600` |
+| File system: `/usr/local/naspeed/run/` | Holds the proxy socket. Mode `2710` gives the socket the directory's group (`root`) independently of the service's primary group. The socket itself is `0660`. |
 | File system: `/proc/stat` and the service's cgroup `cpu.stat`, read only | Processor load during a test, to tell when the NAS rather than the line may limit the result |
-| File system: `/var/api/naspeed.sock` | A symbolic link to that socket. `/var/api` is not writable by an unprivileged user on TOS, so the service creates the link with a privileged `ExecStartPre` step and removes it on stop |
+| File system: `/var/api/naspeed.sock` | A symbolic link to the socket. Privileged systemd commands ensure the TOS proxy directory exists and create or remove this one link. The application and measurement workers run as `naspeed`. |
 | User: `naspeed` (system user) | Isolated service execution — never `root` |
 | Shared folder: None | NASpeed never reads or writes your files |
 
@@ -327,35 +336,26 @@ History page shows in local storage.
 ### After uninstalling
 
 Uninstalling from the App Center stops the service and removes its systemd unit, the program, the `webui/` folder,
-the `/usr/local/naspeed` link and the `/var/api/naspeed.sock` link. With the option to delete the configuration files
-unticked, the following stays in the app's folder on the volume, and a reinstall uses it again:
+logs and rotations, temporary and corrupt files, the socket and its proxy link.
 
-| What stays | Why |
-|---|---|
-| `data/` | Your settings and history |
-| `logs/` | The service log |
-| `run/` | Empty: the socket is removed when the service stops |
-| `LICENSE` | The licence text, which the uninstaller leaves in place |
-| The `naspeed` system user | It keeps owning `data/` and `logs/`, and a reinstall reuses it |
+- **Keep configuration** (leave the deletion box unticked) to retain `data/settings.json` and `data/history.json` when present. A reinstall reuses them. Saved measurements can include your public IP and internet provider.
+- **Delete configuration** (tick the box) to erase those two files as well. A reinstall starts with default settings and empty history.
 
-TOS keeps a few files of its own in the same folder, and `dpkg` lists NASpeed as removed with its configuration
-kept (`rc`).
+To keep a copy of your results before deleting them, export them from **History**. Updates preserve settings and history. TOS manages its own package records, caches and the `naspeed` system account.
 
 ## Versioning
 
 NASpeed uses plain numeric `MAJOR.MINOR.PATCH` versions, the format the TOS App Center compares to offer updates.
-The current version is **0.4.2**, a beta. Every version is described in [CHANGELOG.md](CHANGELOG.md).
+The current version is **1.0.0**. Every version is described in [CHANGELOG.md](CHANGELOG.md).
 
-- **0.x releases are betas.** Features, settings and the API may still change between them. Beta status is
-  tracked separately, never as a `-beta` suffix, so every release remains a plain, comparable number.
-- **1.0.0 will be the first stable release**, once the package has been validated on real TerraMaster hardware.
+- The 0.x packages used the TOS beta flag. The 1.0.0 package sets that flag to `false`.
 - The version is defined once, in [`src/naspeed/__init__.py`](src/naspeed/__init__.py). It appears in Settings,
   in `/api/info`, in `python3 -m naspeed --version` and in every saved result.
 - **Releases are automated.** Pushing a raised version to `main` runs the
   [release workflow](.github/workflows/release.yml): it runs the tests, builds the `.deb` and publishes a
   GitHub Release tagged `vMAJOR.MINOR.PATCH` with the package and its SHA-256 checksum. The release is marked
-  as a pre-release while `BETA` is `True` in the same file and becomes a regular release once it is `False`,
-  which is planned for 1.0.0. A version that already has a tag is never released twice. The release notes start
+  as a pre-release when `BETA` is `True` and as a regular release when it is `False`.
+  A version that already has a tag is never released twice. The release notes start
   with that version's section of [CHANGELOG.md](CHANGELOG.md), whose first line is also the App Center release note.
 - **Builds are reproducible.** Every date inside the package comes from the last commit, or from
   `SOURCE_DATE_EPOCH` when it is set, so building a release's commit again in the same environment gives the

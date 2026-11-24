@@ -63,6 +63,7 @@
     providers: [],
     providerId: "",
     serverChoice: {}, // provider id -> {id, label, sub}
+    confirmedLookups: {}, // permission to contact the catalogue in this tab
     serversToken: 0,
     view: "test",
     running: false,
@@ -1363,10 +1364,11 @@
 
   var confirmDone = null;
 
-  function confirmDialog(title, body, okLabel) {
+  function confirmDialog(title, body, okLabel, destructive) {
     $("dlg-confirm-title").textContent = title;
     $("dlg-confirm-body").textContent = body;
     $("dlg-confirm-ok").textContent = okLabel;
+    $("dlg-confirm-ok").className = destructive ? "btn btn-alert" : "btn btn-ink";
     return new Promise(function (resolve) {
       confirmDone = resolve;
       $("dlg-confirm").showModal();
@@ -1443,7 +1445,8 @@
     if (query) {
       path += "&q=" + encodeURIComponent(query);
     }
-    api("GET", path).then(
+    var lookup = provider.notice && state.confirmedLookups[provider.id];
+    api(lookup ? "POST" : "GET", path, lookup ? { accept_lookup: true } : undefined).then(
       function (data) {
         if (token === state.serversToken) {
           renderServerRows(provider, data.servers || [], "");
@@ -1460,6 +1463,15 @@
   function openServers() {
     var provider = currentProvider();
     if (!provider || !provider.selectable_servers || state.running || state.starting) {
+      return;
+    }
+    if (provider.notice && !state.confirmedLookups[provider.id]) {
+      confirmDialog(t("lookup.title"), t("lookup.mlab"), t("lookup.allow")).then(function (accepted) {
+        if (accepted && state.providerId === provider.id) {
+          state.confirmedLookups[provider.id] = true;
+          openServers();
+        }
+      });
       return;
     }
     var input = $("servers-q");
@@ -1877,7 +1889,7 @@
     var remove = el("button", "btn btn-danger", t("hist.delete"));
     remove.type = "button";
     remove.addEventListener("click", function () {
-      confirmDialog(t("hist.delete.title"), t("hist.delete.body"), t("hist.delete")).then(function (yes) {
+      confirmDialog(t("hist.delete.title"), t("hist.delete.body"), t("hist.delete"), true).then(function (yes) {
         if (!yes) {
           return;
         }
@@ -2290,7 +2302,7 @@
     if (!data || !data.items.length || state.historyLoading || state.historyError) {
       return;
     }
-    confirmDialog(t("hist.clear.title"), tn("hist.clear.body", data.items.length), t("hist.clear")).then(function (yes) {
+    confirmDialog(t("hist.clear.title"), tn("hist.clear.body", data.items.length), t("hist.clear"), true).then(function (yes) {
       if (!yes) {
         return;
       }

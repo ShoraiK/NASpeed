@@ -246,6 +246,19 @@
       <div class="tile s-tile s-text">
         <h2 class="statement" data-i18n="about.data.title">Data and privacy</h2>
         <p data-i18n="about.data.body"></p>
+        <details class="provider-privacy">
+          <summary data-i18n="privacy.connections">Provider connections</summary>
+          <dl>
+            <dt>Cloudflare</dt>
+            <dd><code>speed.cloudflare.com · /meta · /cdn-cgi/trace · /__down · /__up</code><p data-i18n="privacy.cloudflare"></p></dd>
+            <dt>Ookla</dt>
+            <dd><code>www.speedtest.net/speedtest-config.php · /api/js/servers · /hello · /download · /upload</code><p data-i18n="privacy.ookla"></p></dd>
+            <dt>LibreSpeed</dt>
+            <dd><code>librespeed.org/backend-servers/servers.php · getIpURL · dlURL · ulURL</code><p data-i18n="privacy.librespeed"></p></dd>
+            <dt>M-Lab</dt>
+            <dd><code>locate.measurementlab.net/v2/nearest/ndt/ndt7 · /ndt/v7/download · /ndt/v7/upload</code><p data-i18n="privacy.mlab"></p></dd>
+          </dl>
+        </details>
       </div>
       <div class="tile s-tile s-text s-wide">
         <h2 class="statement" data-i18n="about.providers.title">Providers</h2>
@@ -292,7 +305,7 @@
   </dialog>
 
   <!-- Confirmation -->
-  <dialog class="dlg dlg-narrow" id="dlg-confirm" aria-labelledby="dlg-confirm-title">
+  <dialog class="dlg dlg-narrow" id="dlg-confirm" aria-labelledby="dlg-confirm-title" aria-describedby="dlg-confirm-body">
     <div class="dlg-body">
       <h2 class="statement" id="dlg-confirm-title"></h2>
       <p id="dlg-confirm-body"></p>

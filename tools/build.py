@@ -221,12 +221,19 @@ def _validate_package_sources(root: pathlib.Path = ROOT) -> tuple[str, bool, byt
         "NoNewPrivileges=true", "ProtectSystem=strict", "ProtectHome=true",
         "ReadWritePaths=-/usr/local/naspeed/data -/usr/local/naspeed/logs -/usr/local/naspeed/run",
         "Environment=NASPEED_SOCKET=/usr/local/naspeed/run/naspeed.sock",
-        "ExecStartPre=+/bin/sh -c", "ExecStopPost=+/bin/rm -f /var/api/naspeed.sock",
+        "UMask=0077",
         "TimeoutStartSec=30", "TimeoutStopSec=10", "StartLimitBurst=5",
         "StartLimitIntervalSec=60", "WantedBy=multi-user.target",
     ):
         if directive not in service_text:
             raise BuildError("Systemd unit is missing required directive: %s." % directive)
+    privileged = [line for line in service_text.splitlines() if re.match(r"^Exec\w*=\+", line)]
+    if privileged != [
+        "ExecStartPre=+/bin/mkdir -p -m 0755 /var/api",
+        "ExecStartPre=+/bin/ln -sfnT /usr/local/naspeed/run/naspeed.sock /var/api/naspeed.sock",
+        "ExecStopPost=+/bin/rm -f /var/api/naspeed.sock",
+    ]:
+        raise BuildError("Privileged service commands must be limited to the TOS proxy socket path.")
     if re.search(r"^Restart(?:Sec)?\s*=", service_text, re.M):
         raise BuildError("Do not set Restart or RestartSec; TOS manages service restarts.")
     _release_note(root, version)

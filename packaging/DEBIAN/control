@@ -1,5 +1,5 @@
 Package: naspeed
-Version: 0.4.2
+Version: 1.0.0
 Architecture: amd64
 Section: utils
 Priority: optional

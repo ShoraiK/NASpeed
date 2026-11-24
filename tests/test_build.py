@@ -228,7 +228,9 @@ class PackageBuildTests(unittest.TestCase):
 
             def run_postinst(app_dir):
                 patched = temp / "postinst"
-                patched.write_text(script.replace("/usr/local/naspeed", str(app_dir)), encoding="utf-8")
+                local_script = script.replace("/usr/local/naspeed", str(app_dir))
+                local_script = local_script.replace("-o naspeed -g root", f"-o {os.getuid()} -g {os.getgid()}")
+                patched.write_text(local_script, encoding="utf-8")
                 return subprocess.run(["bash", str(patched), "configure"], env=env,
                                       capture_output=True, text=True, check=False)
 
@@ -244,7 +246,10 @@ class PackageBuildTests(unittest.TestCase):
             with tarfile.open(fileobj=io.BytesIO(archive), mode="r:bz2") as webui:
                 shipped = sorted(webui.getnames())
             self.assertEqual(sorted(path.name for path in (upgrade / "webui").iterdir()), shipped)
-            self.assertEqual(sorted(path.name for path in upgrade.iterdir()), ["webui", "webui.bz2"])
+            self.assertEqual(sorted(path.name for path in upgrade.iterdir()),
+                             ["data", "logs", "run", "webui", "webui.bz2"])
+            for name, mode in (("data", 0o700), ("logs", 0o700), ("run", 0o2710)):
+                self.assertEqual((upgrade / name).stat().st_mode & 0o7777, mode)
 
             fresh = temp / "fresh"
             fresh.mkdir()
@@ -261,7 +266,63 @@ class PackageBuildTests(unittest.TestCase):
             self.assertEqual(sorted(path.name for path in (broken / "webui").iterdir()),
                              ["app.js", "index.html"])
             self.assertEqual((broken / "webui" / "index.html").read_bytes(), b"old")
-            self.assertEqual(sorted(path.name for path in broken.iterdir()), ["webui", "webui.bz2"])
+            self.assertEqual(sorted(path.name for path in broken.iterdir()),
+                             ["data", "logs", "run", "webui", "webui.bz2"])
+
+    @unittest.skipUnless(os.name == "posix" and shutil.which("bash"), "Debian package lifecycle")
+    def test_uninstall_cleans_its_volume_and_honours_retention(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = pathlib.Path(temp)
+            volume = base / "Volume2" / "@apps" / "naspeed"
+            volume.mkdir(parents=True)
+            app = base / "naspeed"
+            app.symlink_to(volume)
+            socket_link = base / "proxy.sock"
+            socket_link.symlink_to(volume / "run" / "naspeed.sock")
+            for name in ("logs", "run", "data", "webui", ".webui.test"):
+                (volume / name).mkdir()
+            for name in ("data/settings.json", "data/history.json", "data/.hidden", "data/history.json.corrupt",
+                         "data/settings.json.tmp-11", "logs/naspeed.log.1", "LICENSE", ".userid"):
+                (volume / name).write_text(name, encoding="utf-8")
+            outside = base / "unrelated"
+            outside.mkdir()
+            (outside / "keep").touch()
+            (volume / "data/link").symlink_to(outside)
+            (base / "systemctl").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            (base / "systemctl").chmod(0o755)
+            (base / "dpkg-query").write_text('#!/bin/sh\nprintf "%s" "$TEST_SELECTION"\n', encoding="utf-8")
+            (base / "dpkg-query").chmod(0o755)
+            env = dict(os.environ, PATH=str(base) + os.pathsep + os.environ["PATH"], TEST_SELECTION="deinstall")
+
+            def run_hook(name, action):
+                source = (ROOT / "packaging/DEBIAN" / name).read_text(encoding="utf-8")
+                source = source.replace("/usr/local/naspeed", str(app)).replace("^/Volume", "^" + temp + "/Volume")
+                source = source.replace("/var/api/naspeed.sock", str(socket_link))
+                return subprocess.run(["bash", "-c", source, name, action], env=env, capture_output=True)
+
+            for action in ("upgrade", "failed-upgrade", "abort-upgrade"):
+                for name in ("prerm", "postrm"):
+                    self.assertEqual(run_hook(name, action).returncode, 0)
+                self.assertTrue((volume / "logs/naspeed.log.1").is_file())
+                self.assertTrue(socket_link.is_symlink())
+            for _ in range(2):
+                self.assertEqual(run_hook("prerm", "remove").returncode, 0)
+                self.assertEqual(run_hook("postrm", "remove").returncode, 0)
+            self.assertFalse(socket_link.is_symlink())
+            self.assertEqual(sorted(p.name for p in volume.iterdir()), [".userid", "data"])
+            self.assertEqual(sorted(p.name for p in (volume / "data").iterdir()), ["history.json", "settings.json"])
+            self.assertEqual((volume / "data/settings.json").read_text(), "data/settings.json")
+            env["TEST_SELECTION"] = "purge"
+            self.assertEqual(run_hook("prerm", "remove").returncode, 0)
+            self.assertFalse((volume / "data").exists())
+            app.unlink()  # dpkg detaches the TOS link before invoking postrm
+            for _ in range(2):
+                self.assertEqual(run_hook("postrm", "purge").returncode, 0)
+            self.assertEqual(list(volume.iterdir()), [volume / ".userid"])
+            app.symlink_to(outside)
+            self.assertNotEqual(run_hook("prerm", "remove").returncode, 0)
+            self.assertNotEqual(run_hook("postrm", "purge").returncode, 0)
+            self.assertTrue((outside / "keep").is_file())
 
     def test_source_validation_passes_without_developer_metadata(self):
         version, beta, icon = build._validate_package_sources(ROOT)
