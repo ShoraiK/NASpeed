@@ -59,7 +59,7 @@ class MLab(Provider):
     single_stream = True
 
     def _locate(self):
-        url = LOCATE_URL % (APP_ID, urllib.parse.quote(__version__.split("-")[0]))
+        url = LOCATE_URL % (APP_ID, urllib.parse.quote(__version__))
         try:
             status, _headers, body = netutil.http_fetch(url)
         except netutil.NetError as exc:

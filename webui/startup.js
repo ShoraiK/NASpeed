@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 NASpeed contributors
 // SPDX-License-Identifier: GPL-3.0-only
-(function (root) {
+((root) => {
   "use strict";
 
-  var RELOAD_PARAM = "naspeed_version";
+  const RELOAD_PARAM = "naspeed_version";
 
   function isInfoResponse(info, appId) {
     return !!info &&
@@ -18,21 +18,18 @@
       return "current";
     }
 
-    var search = root.location.search;
-    var params = search.slice(1).split("&");
-    var marker = RELOAD_PARAM + "=" + encodeURIComponent(infoVersion);
-    if (params.indexOf(marker) !== -1) {
+    const search = root.location.search;
+    const params = search.slice(1).split("&");
+    const marker = `${RELOAD_PARAM}=${encodeURIComponent(infoVersion)}`;
+    if (params.includes(marker)) {
       return "stale";
     }
 
-    var separator = search ? "&" : "?";
-    var url = root.location.pathname + search + separator + marker + root.location.hash;
+    const separator = search ? "&" : "?";
+    const url = root.location.pathname + search + separator + marker + root.location.hash;
     root.location.replace(url);
     return "reloading";
   }
 
-  root.NASpeedStartup = {
-    isInfoResponse: isInfoResponse,
-    refreshForVersion: refreshForVersion
-  };
+  root.NASpeedStartup = { isInfoResponse, refreshForVersion };
 })(window);

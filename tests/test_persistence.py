@@ -115,6 +115,34 @@ class PersistenceTests(backend.AppCase):
         self.assertEqual(state["result"]["download"]["mbps"], 12)
         self.assertEqual(self.store.history_count(), 0)
 
+    @unittest.skipUnless(hasattr(os, "O_DIRECTORY"), "POSIX directory fsync required")
+    def test_atomic_write_fsyncs_parent_directory_on_posix(self):
+        path = os.path.join(self.cfg.data_dir, "durability.json")
+        os.makedirs(self.cfg.data_dir, exist_ok=True)
+        real_fsync = os.fsync
+        calls = []
+
+        def tracked_fsync(fd):
+            calls.append(fd)
+            return real_fsync(fd)
+
+        with mock.patch("naspeed.store.os.fsync", side_effect=tracked_fsync):
+            store._atomic_write_json(path, {"ok": True})
+        self.assertEqual(len(calls), 2)
+
+        attempt = 0
+
+        def fail_dir_fsync(fd):
+            nonlocal attempt
+            attempt += 1
+            if attempt == 2:
+                raise OSError(errno.EINVAL, "directory fsync not supported")
+            return real_fsync(fd)
+
+        with mock.patch("naspeed.store.os.fsync", side_effect=fail_dir_fsync):
+            store._atomic_write_json(path, {"ok": 2})
+        self.assertEqual(store._read_json(path, {}), {"ok": 2})
+
 
 class ConditionalApiTests(backend.AppCase):
     def test_summary_detail_and_legacy_history(self):

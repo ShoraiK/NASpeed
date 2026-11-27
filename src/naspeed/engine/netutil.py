@@ -17,7 +17,7 @@ from .. import APP_NAME, __version__
 # transfer workers never use it, and skipping it makes them start faster.
 
 # We identify ourselves honestly; every provider endpoint we use accepts it.
-USER_AGENT = "%s/%s (network speed test client)" % (APP_NAME, __version__.split("-")[0])
+USER_AGENT = "%s/%s (network speed test client)" % (APP_NAME, __version__)
 
 CONTROL_TIMEOUT = 8.0
 MAX_CONTROL_BYTES = 4 * 1024 * 1024

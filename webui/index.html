@@ -13,6 +13,11 @@
 <script src="./prefs.js?v=__VERSION__"></script>
 <script src="./i18n.js?v=__VERSION__" defer></script>
 <script src="./startup.js?v=__VERSION__" defer></script>
+<script src="./format.js?v=__VERSION__" defer></script>
+<script src="./api.js?v=__VERSION__" defer></script>
+<script src="./charts.js?v=__VERSION__" defer></script>
+<script src="./history.js?v=__VERSION__" defer></script>
+<script src="./settings.js?v=__VERSION__" defer></script>
 <script src="./app.js?v=__VERSION__" defer></script>
 </head>
 <body>
@@ -71,6 +76,10 @@
         <div class="tile-body">
           <h2 class="statement" id="status-title" tabindex="-1">NASpeed</h2>
           <p class="note" id="status-sub"></p>
+        </div>
+        <div class="status-actions" id="status-actions" hidden>
+          <button type="button" class="btn" id="status-unpin" data-i18n="status.unpin" hidden>Back to latest</button>
+          <button type="button" class="btn" id="status-copy" data-i18n="action.copy" hidden>Copy summary</button>
         </div>
       </div>
 
@@ -141,7 +150,10 @@
         <h2 class="statement" id="h-count"></h2>
         <p class="note" id="h-limit"></p>
         <div class="h-actions">
-          <select class="field" id="h-filter" name="history-provider" autocomplete="off" data-i18n-attr="aria-label:hist.col.provider"></select>
+          <div class="h-filter-row">
+            <select class="field" id="h-filter" name="history-provider" autocomplete="off" data-i18n-attr="aria-label:hist.col.provider"></select>
+            <button type="button" class="btn h-filter-clear" id="h-filter-clear" data-i18n="hist.filter.clear" hidden>Clear filter</button>
+          </div>
           <button type="button" class="btn" id="h-export" data-i18n="hist.export">Export CSV</button>
           <a class="btn" id="h-download" download="naspeed-history.csv" data-i18n="hist.download" hidden>Download CSV</a>
           <button type="button" class="btn btn-danger" id="h-clear" data-i18n="hist.clear">Delete all</button>
@@ -150,7 +162,10 @@
       <div class="tile h-chart">
         <svg class="skyline" id="h-skyline" viewBox="0 0 1000 100" preserveAspectRatio="none" role="group" tabindex="0" aria-keyshortcuts="ArrowLeft ArrowRight Enter Space" data-i18n-attr="aria-label:hist.chart.keyboard"></svg>
         <p class="sr" id="h-chart-selection" role="status" aria-live="polite"></p>
-        <p class="note" id="h-chart-note"></p>
+        <div class="h-chart-foot">
+          <p class="note" id="h-chart-note"></p>
+          <button type="button" class="btn h-chart-reset" id="h-chart-reset" data-i18n="hist.chart.reset" hidden>Show medians</button>
+        </div>
         <div class="h-chart-step" id="h-chart-step" hidden>
           <button type="button" class="pg" id="h-chart-prev" data-i18n-attr="aria-label:hist.chart.prev">‹</button>
           <button type="button" class="pg" id="h-chart-next" data-i18n-attr="aria-label:hist.chart.next">›</button>
@@ -235,6 +250,11 @@
         <div class="seg" id="set-theme" role="radiogroup" data-i18n-attr="aria-label:set.theme"></div>
       </div>
       <div class="tile s-tile">
+        <h2 class="statement" data-i18n="set.unit">Speed unit</h2>
+        <p class="note" data-i18n="set.unit.help"></p>
+        <div class="seg" id="set-unit" role="radiogroup" data-i18n-attr="aria-label:set.unit"></div>
+      </div>
+      <div class="tile s-tile">
         <h2 class="statement" data-i18n="set.language">Language</h2>
         <p class="note" data-i18n="set.language.help"></p>
         <div class="seg seg-langs" id="set-language" role="radiogroup" data-i18n-attr="aria-label:set.language"></div>
@@ -284,7 +304,10 @@
   <dialog class="dlg" id="dlg-servers" aria-labelledby="dlg-servers-title">
     <div class="dlg-head">
       <h2 class="statement" id="dlg-servers-title" data-i18n="servers.title">Choose a server</h2>
-      <button type="button" class="btn" data-close data-i18n="dialog.close">Close</button>
+      <div class="dlg-head-actions">
+        <button type="button" class="btn" id="servers-refresh" data-i18n="servers.refresh">Refresh</button>
+        <button type="button" class="btn" data-close data-i18n="dialog.close">Close</button>
+      </div>
     </div>
     <input class="field" id="servers-q" name="server-search" type="search" autocomplete="off" spellcheck="false" data-i18n-attr="placeholder:servers.search;aria-label:servers.search">
     <div class="rows" id="servers-list" role="radiogroup" aria-labelledby="dlg-servers-title"></div>

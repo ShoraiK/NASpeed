@@ -104,6 +104,15 @@ jobs:
       - name: Check web UI startup behavior
         run: node tests/test_startup.js
 
+      - name: Check the web UI scripts parse
+        run: |
+          for file in webui/*.js; do
+            node --check "$file"
+          done
+
+      - name: Check Debian maintainer script syntax
+        run: bash -n packaging/DEBIAN/preinst packaging/DEBIAN/postinst packaging/DEBIAN/prerm packaging/DEBIAN/postrm
+
       - name: Build the package
         run: python tools/build.py
 

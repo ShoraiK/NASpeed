@@ -5,10 +5,11 @@
  * Loaded before the page is painted so the saved theme is applied without a
  * flash. Inside TOS the page shares its origin with the desktop, so every key
  * is prefixed. */
-(function () {
+(() => {
   "use strict";
 
-  var PREFIX = "naspeed.";
+  const PREFIX = "naspeed.";
+  const darkScheme = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 
   function get(name) {
     try {
@@ -30,22 +31,33 @@
     }
   }
 
+  /* "mbps" or "auto" (switches to Gbps from 1000 Mbps upward). */
+  function speedUnit() {
+    return get("speedUnit") === "auto" ? "auto" : "mbps";
+  }
+
   /* "light", "dark" or "" (follow the system). */
   function theme() {
-    var value = get("theme");
+    const value = get("theme");
     return value === "light" || value === "dark" ? value : "";
   }
 
   function applyTheme(value) {
-    var root = document.documentElement;
-    if (value === "light" || value === "dark") {
-      root.setAttribute("data-theme", value);
-    } else {
-      root.removeAttribute("data-theme");
-    }
+    const resolved =
+      value === "light" || value === "dark"
+        ? value
+        : (darkScheme && darkScheme.matches ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", resolved);
   }
 
   applyTheme(theme());
+  if (darkScheme && darkScheme.addEventListener) {
+    darkScheme.addEventListener("change", () => {
+      if (!theme()) {
+        applyTheme("");
+      }
+    });
+  }
 
   /* Inside the TOS desktop the page lives in an iframe and TOS lays its window
      controls over the top of it; the stylesheet keeps that strip clear. */
@@ -53,5 +65,5 @@
     document.documentElement.classList.add("embedded");
   }
 
-  window.NASpeedPrefs = { get: get, set: set, theme: theme, applyTheme: applyTheme };
+  window.NASpeedPrefs = { get, set, theme, applyTheme, speedUnit };
 })();

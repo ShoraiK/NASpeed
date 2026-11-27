@@ -18,6 +18,7 @@ import os
 import re
 import socket
 import sys
+import tarfile
 import tempfile
 import threading
 import time
@@ -29,7 +30,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
 from naspeed import BETA, __version__, auth, cli, config  # noqa: E402
-from naspeed.api import App, strip_prefix  # noqa: E402
+from naspeed.api import App, StaticFiles, strip_prefix  # noqa: E402
 from naspeed.config import Config, _checkout_root, build_parser, load_config  # noqa: E402
 from naspeed.engine import cpu, latency, netutil  # noqa: E402
 from naspeed.engine import runner as runner_module  # noqa: E402
@@ -183,6 +184,7 @@ class RoutingTests(AppCase):
     def test_unknown_route_and_wrong_method(self):
         self.assertEqual(self.call("GET", "/api/nothing")[0], 404)
         self.assertEqual(self.call("GET", "/api/test/start")[0], 405)
+        self.assertEqual(self.call("POST", "/health")[0], 405)
 
     def test_info_lists_the_providers(self):
         _status, payload, _ = self.call("GET", "/api/info")
@@ -197,6 +199,27 @@ class RoutingTests(AppCase):
         self.assertIn("Content-Security-Policy", response.headers)
         self.assertEqual(self.call("GET", "/../secret.txt")[0], 404)
         self.assertEqual(self.call("GET", "/missing.js")[0], 404)
+
+    def test_static_files_load_archive_lazily(self):
+        archive_path = os.path.join(self.tmp.name, "webui.bz2")
+        payload = b"<!doctype html><title>NASpeed __VERSION__</title>"
+        with tarfile.open(archive_path, "w:bz2") as archive:
+            info = tarfile.TarInfo("index.html")
+            info.size = len(payload)
+            archive.addfile(info, io.BytesIO(payload))
+        cfg = Config(app_dir=self.tmp.name, data_dir=self.cfg.data_dir, webui_archive=archive_path)
+        cfg.finalize()
+        with mock.patch.object(StaticFiles, "_load_archive", autospec=True,
+                               side_effect=StaticFiles._load_archive) as loader:
+            static = StaticFiles(cfg)
+            self.assertEqual(loader.call_count, 0)
+            self.assertEqual(static.files, {})
+            first = static.serve("/")
+            second = static.serve("/index.html")
+        self.assertEqual(loader.call_count, 1)
+        self.assertEqual(first.status, 200)
+        self.assertIn(b"<title>NASpeed ", first.body)
+        self.assertEqual(second.body, first.body)
 
     def test_preflight(self):
         headers = {"Origin": "http://nas.local:8181", "Host": "nas.local:8181"}
@@ -364,6 +387,25 @@ class SettingsAndHistoryTests(AppCase):
         self.assertEqual(store.list_history(), [])
         self.assertTrue(os.path.exists(os.path.join(self.cfg.data_dir, "history.json.corrupt")))
 
+    def test_history_revision_is_cached_and_updated_on_mutations(self):
+        data_dir = os.path.join(self.tmp.name, "rev_cache")
+        with mock.patch.object(Store, "_revision", side_effect=Store._revision) as rev_mock:
+            store = Store(data_dir)
+            first_rev = store.history_page()["revision"]
+            self.assertEqual(store.history_page()["revision"], first_rev)
+            self.assertEqual(store.history_page()["revision"], first_rev)
+            self.assertEqual(rev_mock.call_count, 1)
+            store.add_result(self.result(1))
+            added_rev = store.history_page()["revision"]
+            self.assertNotEqual(added_rev, first_rev)
+            self.assertEqual(store.history_page()["revision"], added_rev)
+            self.assertEqual(rev_mock.call_count, 2)
+            self.assertTrue(store.delete_result("id001"))
+            self.assertEqual(store.history_page()["revision"], first_rev)
+            self.assertEqual(rev_mock.call_count, 3)
+            self.assertTrue(store.clear_history(first_rev))
+            self.assertEqual(rev_mock.call_count, 4)
+
 
 class AccessHelperTests(unittest.TestCase):
     def test_local_addresses(self):
@@ -380,6 +422,129 @@ class AccessHelperTests(unittest.TestCase):
         for host in ("example.com", "evil.example.com:80", "", "nas.local.evil.com"):
             self.assertFalse(auth.host_is_allowed(host), host)
         self.assertTrue(auth.host_is_allowed("nas.example.com", ("nas.example.com",)))
+
+
+class HttpdHardeningTests(unittest.TestCase):
+    @staticmethod
+    def _exchange(port, payload):
+        with socket.create_connection(("127.0.0.1", port), timeout=5.0) as sock:
+            sock.sendall(payload)
+            sock.shutdown(socket.SHUT_WR)
+            chunks = []
+            while True:
+                data = sock.recv(4096)
+                if not data:
+                    break
+                chunks.append(data)
+        raw = b"".join(chunks)
+        head, _sep, body = raw.partition(b"\r\n\r\n")
+        lines = head.decode("latin-1").split("\r\n")
+        status = int(lines[0].split(" ", 2)[1])
+        headers = {}
+        for line in lines[1:]:
+            name, _colon, value = line.partition(":")
+            headers[name.strip().lower()] = value.strip()
+        return status, headers, body
+
+    def test_chunked_body_validation_bounds_and_truncation(self):
+        read_chunked = lambda raw: httpd._Handler._read_chunked(types.SimpleNamespace(rfile=io.BytesIO(raw)))
+        self.assertEqual(read_chunked(b"0\r\n\r\n"), b"")
+        self.assertEqual(read_chunked(b"2;a=1\r\nhi\r\n1\r\n!\r\n0\r\nX-A: 1\r\n\r\n"), b"hi!")
+        too_many_chunks = b"1\r\na\r\n" * (httpd.MAX_CHUNKS + 1) + b"0\r\n\r\n"
+        too_many_trailers = b"0\r\n" + (b"X-T: 1\r\n" * (httpd.MAX_TRAILERS + 1)) + b"\r\n"
+        long_line = (b"1;" + b"a" * (httpd.MAX_LINE + 10) + b"\r\n")
+        for bad in (b"-1\r\n", b"+1\r\n", b"1_0\r\n", b"5\r\nabc", b"2\r\n{}xx\r\n0\r\n\r\n",
+                    b"", too_many_chunks, too_many_trailers, long_line):
+            with self.subTest(bad=bad[:24]):
+                with self.assertRaises(ValueError):
+                    read_chunked(bad)
+        with self.assertRaises(httpd._BodyTooLarge):
+            read_chunked(b"%x\r\n" % (httpd.MAX_BODY + 1))
+        over_total = b"8000\r\n" + (b"a" * 0x8000) + b"\r\n8001\r\n" + (b"b" * 0x8001) + b"\r\n0\r\n\r\n"
+        with self.assertRaises(httpd._BodyTooLarge):
+            read_chunked(over_total)
+
+    def test_tcp_server_rejects_malformed_requests_unsupported_methods_and_busy_pool(self):
+        entered = threading.Event()
+        release = threading.Event()
+
+        class StubApp:
+            def handle(self, req):
+                if req.path == "/slow":
+                    entered.set()
+                    release.wait(3.0)
+                    return httpd.Response.json({"ok": "slow"})
+                return httpd.Response.json({"path": req.path, "len": len(req.body)})
+
+        server = httpd.tcp_server("127.0.0.1", 0, StubApp(), max_workers=1)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
+        thread.start()
+        try:
+            cases = [
+                (b"POST /api/settings HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: abc\r\n\r\n",
+                 400, "bad_request"),
+                (b"POST /api/settings HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: -5\r\n\r\n",
+                 400, "bad_request"),
+                (b"POST /api/settings HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 5\r\nContent-Length: 6\r\n\r\n",
+                 400, "bad_request"),
+                (b"POST /api/settings HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 70000\r\n\r\n",
+                 413, "body_too_large"),
+                (b"POST /api/settings HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 10\r\n\r\n{}",
+                 400, "bad_request"),
+                (b"POST /api/settings HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 2\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\n\r\n",
+                 400, "bad_request"),
+                (b"POST /api/settings HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n10001\r\n",
+                 413, "body_too_large"),
+                (b"POST /api/settings HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: gzip\r\n\r\n",
+                 411, "length_required"),
+            ]
+            for payload, expected_status, expected_error in cases:
+                with self.subTest(expected=(expected_status, expected_error)):
+                    status, headers, body = self._exchange(port, payload)
+                    self.assertEqual(status, expected_status)
+                    self.assertEqual(headers.get("connection"), "close")
+                    self.assertEqual(json.loads(body.decode("utf-8"))["error"], expected_error)
+
+            for method in ("PUT", "DELETE", "PATCH", "TRACE"):
+                with self.subTest(method=method):
+                    status, headers, body = self._exchange(
+                        port, ("%s /api/info HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n" % method).encode("ascii"))
+                    self.assertEqual(status, 405)
+                    self.assertIn("application/json", headers.get("content-type", ""))
+                    self.assertEqual(headers.get("allow"), "GET, POST, HEAD, OPTIONS")
+                    self.assertEqual(json.loads(body.decode("utf-8"))["error"], "method_not_allowed")
+
+            with socket.create_connection(("127.0.0.1", port), timeout=5.0) as slow_sock:
+                slow_sock.sendall(b"GET /slow HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+                self.assertTrue(entered.wait(2.0))
+                status, headers, body = self._exchange(
+                    port, b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+                self.assertEqual(status, 503)
+                self.assertEqual(headers.get("connection"), "close")
+                self.assertEqual(json.loads(body.decode("utf-8"))["error"], "server_busy")
+                release.set()
+                slow_resp = b""
+                while True:
+                    chunk = slow_sock.recv(4096)
+                    if not chunk:
+                        break
+                    slow_resp += chunk
+                self.assertTrue(slow_resp.startswith(b"HTTP/1.1 200"))
+
+            deadline = time.monotonic() + 1.0
+            while True:
+                status, _headers, _body = self._exchange(
+                    port, b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+                if status == 200 or time.monotonic() >= deadline:
+                    break
+                time.sleep(0.01)
+            self.assertEqual(status, 200)
+        finally:
+            release.set()
+            server.shutdown()
+            thread.join(2.0)
+            server.server_close()
 
 
 class EngineMathTests(unittest.TestCase):
@@ -407,6 +572,33 @@ class EngineMathTests(unittest.TestCase):
         thread.start()
         runner._watch(stop, thread)
         self.assertTrue(stop.is_set())
+
+    def test_runner_snapshot_is_isolated_from_transfer_updates(self):
+        runner = TestRunner.__new__(TestRunner)
+        runner._lock = threading.Lock()
+        runner._polled = 0.0
+        runner._t0 = time.perf_counter()
+        runner._state = {
+            "id": "t1", "status": "running", "phase": "download", "progress": 0.2,
+            "client": {"ip": "1.2.3.4"},
+            "download": {"live_mbps": 10.0, "mbps": 9.0, "bytes": 1000, "streams": 4,
+                         "measuring": False, "peak_mbps": 10.0, "series": [[0.1, 10.0]],
+                         "window": 8, "window_start": None},
+        }
+        before = runner.snapshot()
+        self.assertNotIn("elapsed", runner._state)
+        runner._update_live_transfer(
+            "download", window=8, window_start=(1.0, 500), live=50.0, average=40.0,
+            snap=types.SimpleNamespace(bytes=2000, active=8, info={"client_ip": "5.6.7.8"}),
+            peak=50.0, series=[[0.1, 10.0], [0.2, 50.0]], grown=True, fraction=0.5, client={},
+        )
+        after = runner.snapshot()
+        self.assertEqual(before["download"]["live_mbps"], 10.0)
+        self.assertEqual(before["download"]["series"], [[0.1, 10.0]])
+        self.assertEqual(before["client"], {"ip": "1.2.3.4"})
+        self.assertEqual(after["download"]["live_mbps"], 50.0)
+        self.assertEqual(after["download"]["series"], [[0.1, 10.0], [0.2, 50.0]])
+        self.assertEqual(after["client"], {"ip": "5.6.7.8"})
 
     def test_probe_that_never_started_finishes_cleanly(self):
         # A test can fail while it opens its connections, before the probe starts.
@@ -453,6 +645,13 @@ class EngineMathTests(unittest.TestCase):
         self.assertEqual(scaler.wanted(0.0, 4), 4)
         self.assertEqual(scaler.wanted(120.0, 4), 8)
         self.assertEqual(StreamScaler(cap=4).wanted(120.0, 4), 4)
+
+    def test_stream_cap_respects_cgroup_memory_limit(self):
+        with mock.patch("naspeed.engine.runner.os.cpu_count", return_value=8), \
+                mock.patch("naspeed.engine.runner.cpu.memory_limit_bytes",
+                           side_effect=[None, 512 << 20, 256 << 20, 128 << 20, 128 << 20]):
+            self.assertEqual([runner_module.stream_cap(True) for _ in range(4)], [16, 16, 12, 4])
+            self.assertEqual(runner_module.stream_cap(False), 32)
 
     def test_recent_rate(self):
         # 125 000 bytes every 0.1 s is exactly 10 Mbit/s.
@@ -540,6 +739,44 @@ class CpuLoadTests(unittest.TestCase):
             with open(proc, "w", encoding="ascii") as handle:
                 handle.write("0::/\n")
             self.assertEqual(found(proc, root), [])
+
+    def test_memory_limit_is_read_from_cgroup_v2_and_v1(self):
+        with tempfile.TemporaryDirectory() as root:
+            v2_unit = os.path.join(root, "system.slice", "naspeed.service")
+            v1_unit = os.path.join(root, "memory", "system.slice", "naspeed.service")
+            os.makedirs(v2_unit)
+            os.makedirs(v1_unit)
+            proc = os.path.join(root, "cgroup")
+
+            with open(proc, "w", encoding="ascii") as handle:
+                handle.write("0::/system.slice/naspeed.service\n")
+            with open(os.path.join(v2_unit, "memory.max"), "w", encoding="ascii") as handle:
+                handle.write("268435456\n")
+            self.assertEqual(cpu.memory_limit_bytes(proc, root), 268435456)
+
+            with open(os.path.join(v2_unit, "memory.max"), "w", encoding="ascii") as handle:
+                handle.write("max\n")
+            with open(os.path.join(root, "system.slice", "memory.max"), "w", encoding="ascii") as handle:
+                handle.write("200000000\n")
+            self.assertEqual(cpu.memory_limit_bytes(proc, root), 200000000)
+
+            with open(os.path.join(root, "system.slice", "memory.max"), "w", encoding="ascii") as handle:
+                handle.write("max\n")
+            self.assertIsNone(cpu.memory_limit_bytes(proc, root))
+
+            with open(proc, "w", encoding="ascii") as handle:
+                handle.write("5:memory:/system.slice/naspeed.service\n")
+            with open(os.path.join(v1_unit, "memory.limit_in_bytes"), "w", encoding="ascii") as handle:
+                handle.write("536870912\n")
+            self.assertEqual(cpu.memory_limit_bytes(proc, root), 536870912)
+
+            with open(os.path.join(v1_unit, "memory.limit_in_bytes"), "w", encoding="ascii") as handle:
+                handle.write("9223372036854771712\n")
+            self.assertIsNone(cpu.memory_limit_bytes(proc, root))
+
+            with open(proc, "w", encoding="ascii") as handle:
+                handle.write("0::/\n")
+            self.assertIsNone(cpu.memory_limit_bytes(proc, root))
 
 
 class DevModeTests(unittest.TestCase):
@@ -632,6 +869,15 @@ class CommandLineTests(unittest.TestCase):
         self.assertEqual(code, 0)
         list_servers.assert_called_once()
         runner.assert_not_called()
+
+    def test_list_servers_reports_network_errors(self):
+        provider = mock.Mock()
+        provider.list_servers.side_effect = netutil.NetError("dns_failed", "example.com")
+        args = build_parser().parse_args(["test", "--provider", "ookla", "--list-servers"])
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            code = cli._list_servers(provider, args)
+        self.assertEqual(code, 1)
+        self.assertIn("error: dns_failed: example.com", output.getvalue())
 
 
     def test_missing_latency_prints_a_dash(self):

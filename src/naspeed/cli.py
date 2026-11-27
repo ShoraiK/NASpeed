@@ -15,6 +15,7 @@ import sys
 import time
 
 from . import log
+from .engine import netutil
 from .engine.runner import TestRunner
 from .providers import Context, ProviderError, build_registry
 from .store import Store
@@ -47,7 +48,7 @@ def _fmt_speed(mbps):
 def _list_servers(provider, args):
     try:
         servers = provider.list_servers(Context(ip_version=args.ip_version))
-    except ProviderError as exc:
+    except (ProviderError, netutil.NetError) as exc:
         _out("error: %s" % exc)
         return 1
     _out("%-10s %8s  %-28s %s" % ("id", "ms", "location", "sponsor / host"))

@@ -227,18 +227,20 @@ def _http_upload(spec, endpoint, idx, ctr, stop):
     probing = True
     size = min(UPLOAD_PROBE_BYTES, full_size)
     counts = ctr.bytes
-    state = {"chunk": MIN_CHUNK}
+    chunk = MIN_CHUNK
+    complete = False
     conn = None
     failures = 0
 
     def body(size):
         # Chunks are sized so each takes a few tens of milliseconds to send:
         # small enough for smooth progress, large enough to stay efficient.
+        nonlocal chunk, complete
         sent = 0
-        chunk = state["chunk"]
+        cur_chunk = chunk
         last = time.perf_counter()
         while sent < size and not stop.is_set():
-            count = min(chunk, size - sent)
+            count = min(cur_chunk, size - sent)
             yield payload[:count]
             sent += count
             if not probing:
@@ -246,12 +248,12 @@ def _http_upload(spec, endpoint, idx, ctr, stop):
             now = time.perf_counter()
             elapsed = now - last
             last = now
-            if elapsed < 0.012 and chunk < MAX_CHUNK:
-                chunk *= 2
-            elif elapsed > 0.08 and chunk > MIN_CHUNK:
-                chunk //= 2
-        state["chunk"] = chunk
-        state["complete"] = sent >= size
+            if elapsed < 0.012 and cur_chunk < MAX_CHUNK:
+                cur_chunk *= 2
+            elif elapsed > 0.08 and cur_chunk > MIN_CHUNK:
+                cur_chunk //= 2
+        chunk = cur_chunk
+        complete = sent >= size
 
     while not stop.is_set():
         try:
@@ -263,10 +265,10 @@ def _http_upload(spec, endpoint, idx, ctr, stop):
             ctr.socks[idx] = conn.sock
             headers = _headers(spec, {"Content-Length": str(size)})
             headers.setdefault("Content-Type", "application/octet-stream")
-            state["complete"] = False
+            complete = False
             ctr.active[idx] = 1
             conn.request("POST", _fill(spec["path"], size), body=body(size), headers=headers)
-            if not state["complete"]:
+            if not complete:
                 break  # stopped half-way through the body: just drop the connection
             resp = conn.getresponse()
             if resp.status not in (200, 201, 202, 204):
@@ -426,6 +428,11 @@ def _ndt7_measurement(ctr, raw):
 def _ws_control(reader, sock, key, ctr, opcode, length):
     """Handle a non-binary frame. Returns False when the peer closed."""
     if opcode == 0x8:
+        if 0 < length <= 125:
+            try:
+                reader.exact(length)
+            except (EOFError, OSError):
+                pass
         return False
     if length > 65536:
         raise TransferError("oversized websocket control/text frame")
@@ -466,7 +473,6 @@ def _ndt7_download(spec, endpoint, idx, ctr, stop):
                     if stop.is_set():
                         return
             else:
-                counts[idx] += length
                 if not _ws_control(reader, sock, key, ctr, opcode, length):
                     break
     except EOFError:

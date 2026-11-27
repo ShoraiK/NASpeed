@@ -19,7 +19,6 @@ bytes are counted over a fixed measurement window. The result is simply
 
 from __future__ import annotations
 
-import copy
 import os
 import socket
 import threading
@@ -51,6 +50,8 @@ RESULT_SERIES_POINTS = 48
 # at least this share of what the new connections would add if each carried as
 # much as the old ones did.
 GROWTH_SHARE = 0.5
+MAIN_RSS_RESERVE_BYTES = 64 * 1024 * 1024
+TLS_WORKER_RSS_BYTES = 16 * 1024 * 1024
 
 # Share of the overall progress bar taken by each phase.
 PHASE_SPAN = (("init", 0.05), ("ping", 0.07), ("download", 0.44), ("upload", 0.44))
@@ -120,14 +121,20 @@ class StreamScaler:
 
 
 def stream_cap(tls):
-    """Upper bound on connections, scaled to the machine.
+    """Upper bound on connections, scaled to the machine and cgroup RAM limit.
 
-    A TLS connection costs one worker process, a plain one a thread.
+    A TLS connection costs one worker process (~23 MiB RSS / ~11 MiB anon),
+    a plain one a thread.
     """
     cpus = os.cpu_count() or 2
-    if tls:
-        return max(4, min(16, cpus * 2))
-    return max(4, min(32, cpus * 4))
+    if not tls:
+        return max(4, min(32, cpus * 4))
+    cap = max(4, min(16, cpus * 2))
+    limit = cpu.memory_limit_bytes()
+    if limit is not None:
+        budget = max(0, limit - MAIN_RSS_RESERVE_BYTES) // TLS_WORKER_RSS_BYTES
+        cap = min(cap, max(4, budget))
+    return cap
 
 
 def _recent_rate(samples, now, lookback):
@@ -242,7 +249,7 @@ class TestRunner:
         with self._lock:
             if self._state is None:
                 return None
-            state = copy.deepcopy(self._state)
+            state = dict(self._state)
         if state["status"] == "running":
             state["elapsed"] = round(time.perf_counter() - self._t0, 1)
         return state
@@ -290,8 +297,8 @@ class TestRunner:
             self._check()
             family = 6 if session.endpoint.family == socket.AF_INET6 else 4
             client = dict(session.client) if session.client else {}
-            self._set(server=dict(session.server), client=client or None, phase="ping",
-                      progress=self._progress("ping", 0.0), ip_family=family)
+            self._set(server=dict(session.server), client=dict(client) if client else None,
+                      phase="ping", progress=self._progress("ping", 0.0), ip_family=family)
 
             ping = self._ping(session)
             download = self._transfer("download", session, opts, client)
@@ -304,7 +311,7 @@ class TestRunner:
                 "provider": provider.id,
                 "provider_name": provider.name,
                 "server": dict(session.server),
-                "client": client,
+                "client": dict(client),
                 "ping": ping,
                 "download": download,
                 "upload": upload,
@@ -319,7 +326,7 @@ class TestRunner:
             except StorageError:
                 save_error = "storage_error"
             self._set(status="done", phase="done", progress=1.0, result=result, saved=saved,
-                      save_error=save_error, client=client or None, elapsed=result["duration"])
+                      save_error=save_error, client=dict(client) if client else None, elapsed=result["duration"])
             logger.info("test finished: provider=%s down=%.1f Mbps up=%.1f Mbps ping=%s ms",
                         provider.id, download["mbps"] if download else 0.0,
                         upload["mbps"] if upload else 0.0, ping.get("latency"))
@@ -359,8 +366,7 @@ class TestRunner:
         result["values"] = [round(v, 2) for v in values]
         return result
 
-    def _transfer(self, direction, session, opts, client):
-        spec = session.spec(direction)
+    def _transfer_plan(self, session, opts):
         window = DURATIONS[opts["duration"]]
         if session.max_window:
             window = min(window, session.max_window)
@@ -372,17 +378,40 @@ class TestRunner:
             fixed = None
         cap = min(session.max_streams, stream_cap(session.endpoint.tls))
         initial = min(fixed or session.initial_streams, cap)
+        return window, fixed, cap, initial
 
-        # "window" is the length of the measurement; "window_start" is when the
-        # warm-up ended (seconds since the transfer began, None until then).
-        live_state = {"live_mbps": 0.0, "mbps": 0.0, "bytes": 0, "streams": 0,
-                      "measuring": False, "peak_mbps": 0.0, "series": [],
-                      "window": window, "window_start": None}
-        self._set(phase=direction, progress=self._progress(direction, 0.0), **{direction: live_state})
+    def _maybe_scale_pool(self, scaler, samples, pool, t, last_scale, settle_until):
+        """Add connections during warm-up when recent throughput keeps growing."""
+        if t - last_scale < SCALE_INTERVAL or t > WARMUP_MAX - SETTLE_AFTER_SCALE:
+            return last_scale, settle_until
+        wanted = scaler.wanted(_recent_rate(samples, t, 0.5), pool.streams)
+        if wanted > pool.streams:
+            pool.add_streams(wanted - pool.streams)
+            return t, t + SETTLE_AFTER_SCALE
+        return last_scale, settle_until
 
-        pool = TransferPool(self.cfg, spec)
-        self._pool = pool
-        probe = latency.LoadedProbe(session.endpoint)
+    def _update_live_transfer(self, direction, *, window, window_start, live, average,
+                              snap, peak, series, grown, fraction, client):
+        with self._lock:
+            prev = self._state[direction]
+            # Assign a fresh immutable transfer dict so snapshot() stays shallow.
+            self._state[direction] = {
+                "live_mbps": round(live, 2),
+                "mbps": round(average, 2),
+                "bytes": snap.bytes,
+                "streams": snap.active,
+                "measuring": window_start is not None,
+                "peak_mbps": round(peak, 2),
+                "series": list(series) if grown else prev["series"],
+                "window": window,
+                "window_start": round(window_start[0], 2) if window_start is not None else None,
+            }
+            self._state["progress"] = self._progress(direction, fraction)
+            if snap.info.get("client_ip") and not client.get("ip"):
+                client["ip"] = snap.info["client_ip"]
+                self._state["client"] = dict(client)
+
+    def _run_transfer_loop(self, direction, pool, probe, window, fixed, cap, client):
         samples = deque()
         series = []
         window_start = None
@@ -390,93 +419,71 @@ class TestRunner:
         end = (0.0, 0)
         snap = None
         peak = 0.0
-        cpu_start = cpu_end = None
+        cpu_start = None
         scaler = StreamScaler(cap)
-        try:
-            pool.add_streams(initial)
-            probe.start()
-            t0 = time.perf_counter()
-            settle_until = WARMUP_MIN
-            last_scale = 0.0
-            last_series = -1.0
-            while True:
-                if self._stop.wait(TICK):
-                    raise _Cancelled()
-                t = time.perf_counter() - t0
-                snap = pool.snapshot()
-                if snap.info.get("upload_rejection"):
-                    raise TestError("transfer_failed", snap.info["upload_rejection"])
-                end = (t, snap.bytes)
-                samples.append(end)
-                while len(samples) > 2 and samples[1][0] <= t - LIVE_WINDOW:
-                    samples.popleft()
-                t_old, b_old = samples[0]
-                live = (snap.bytes - b_old) * 8 / (t - t_old) / 1e6 if t - t_old >= 0.2 else 0.0
-                if t >= 1.0 and mark is None:
-                    mark = end
-                if window_start is not None:
-                    peak = max(peak, live)
+        t0 = time.perf_counter()
+        settle_until = WARMUP_MIN
+        last_scale = 0.0
+        last_series = -1.0
+        while True:
+            if self._stop.wait(TICK):
+                raise _Cancelled()
+            t = time.perf_counter() - t0
+            snap = pool.snapshot()
+            if snap.info.get("upload_rejection"):
+                raise TestError("transfer_failed", snap.info["upload_rejection"])
+            end = (t, snap.bytes)
+            samples.append(end)
+            while len(samples) > 2 and samples[1][0] <= t - LIVE_WINDOW:
+                samples.popleft()
+            t_old, b_old = samples[0]
+            live = (snap.bytes - b_old) * 8 / (t - t_old) / 1e6 if t - t_old >= 0.2 else 0.0
+            if t >= 1.0 and mark is None:
+                mark = end
+            if window_start is not None:
+                peak = max(peak, live)
 
-                # Add connections during the warm-up (see StreamScaler). Each
-                # decision uses the most recent half second, which is past the
-                # slow start of connections added a second earlier.
-                if (fixed is None and window_start is None and t >= 1.0
-                        and t - last_scale >= SCALE_INTERVAL
-                        and t <= WARMUP_MAX - SETTLE_AFTER_SCALE):
-                    wanted = scaler.wanted(_recent_rate(samples, t, 0.5), pool.streams)
-                    if wanted > pool.streams:
-                        pool.add_streams(wanted - pool.streams)
-                        last_scale = t
-                        settle_until = t + SETTLE_AFTER_SCALE
+            # Add connections during the warm-up (see StreamScaler). Each
+            # decision uses the most recent half second, which is past the
+            # slow start of connections added a second earlier.
+            if fixed is None and window_start is None and t >= 1.0:
+                last_scale, settle_until = self._maybe_scale_pool(
+                    scaler, samples, pool, t, last_scale, settle_until
+                )
 
-                if window_start is None and snap.bytes > 0 and (t >= settle_until or t >= WARMUP_MAX):
-                    window_start = end
-                    probe.begin_window()
-                    cpu_start = cpu.sample()
+            if window_start is None and snap.bytes > 0 and (t >= settle_until or t >= WARMUP_MAX):
+                window_start = end
+                probe.begin_window()
+                cpu_start = cpu.sample()
 
-                if window_start is not None and t - window_start[0] >= 0.3:
-                    average = (snap.bytes - window_start[1]) * 8 / (t - window_start[0]) / 1e6
-                    fraction = 0.15 + 0.85 * (t - window_start[0]) / window
-                else:
-                    average = live
-                    fraction = 0.15 * min(1.0, t / max(settle_until, 0.1))
+            if window_start is not None and t - window_start[0] >= 0.3:
+                average = (snap.bytes - window_start[1]) * 8 / (t - window_start[0]) / 1e6
+                fraction = 0.15 + 0.85 * (t - window_start[0]) / window
+            else:
+                average = live
+                fraction = 0.15 * min(1.0, t / max(settle_until, 0.1))
 
-                grown = t - last_series >= SERIES_INTERVAL
-                if grown:
-                    last_series = t
-                    series.append([round(t, 2), round(live, 2)])
-                with self._lock:
-                    state = self._state[direction]
-                    state["live_mbps"] = round(live, 2)
-                    state["mbps"] = round(average, 2)
-                    state["bytes"] = snap.bytes
-                    state["streams"] = snap.active
-                    state["measuring"] = window_start is not None
-                    if window_start is not None:
-                        state["window_start"] = round(window_start[0], 2)
-                    state["peak_mbps"] = round(peak, 2)
-                    if grown:
-                        # A new list each time: snapshot() copies it under the lock.
-                        state["series"] = list(series)
-                    self._state["progress"] = self._progress(direction, fraction)
-                    if snap.info.get("client_ip") and not client.get("ip"):
-                        client["ip"] = snap.info["client_ip"]
-                        self._state["client"] = dict(client)
+            grown = t - last_series >= SERIES_INTERVAL
+            if grown:
+                last_series = t
+                series.append([round(t, 2), round(live, 2)])
+            self._update_live_transfer(
+                direction, window=window, window_start=window_start, live=live, average=average,
+                snap=snap, peak=peak, series=series, grown=grown, fraction=fraction, client=client,
+            )
 
-                if window_start is not None and t - window_start[0] >= window:
-                    break
-                if snap.finished:
-                    break
-                if snap.bytes == 0 and t >= NO_DATA_TIMEOUT:
-                    raise TestError("no_data", snap.last_error)
-                if t >= WARMUP_MAX + window + 3.0:
-                    break
-            cpu_end = cpu.sample()
-        finally:
-            pool.stop()
-            self._pool = None
-            loaded = probe.finish()
+            if window_start is not None and t - window_start[0] >= window:
+                break
+            if snap.finished:
+                break
+            if snap.bytes == 0 and t >= NO_DATA_TIMEOUT:
+                raise TestError("no_data", snap.last_error)
+            if t >= WARMUP_MAX + window + 3.0:
+                break
+        return end, snap, mark, window_start, peak, series, cpu_start, cpu.sample()
 
+    def _finalize_transfer(self, direction, session, pool, loaded, end, snap, mark,
+                           window_start, peak, series, cpu_start, cpu_end):
         rejection = pool.snapshot().info.get("upload_rejection")
         if rejection:
             raise TestError("transfer_failed", rejection)
@@ -525,12 +532,45 @@ class TestRunner:
         if snap.info.get("min_rtt_ms") is not None:
             result["server_min_rtt_ms"] = snap.info["min_rtt_ms"]
         with self._lock:
-            state = self._state[direction]
-            state.update({"live_mbps": 0.0, "mbps": result["mbps"], "bytes": result["bytes"],
-                          "streams": 0, "streams_used": result["streams"],
-                          "measuring": False, "done": True,
-                          "latency": result["latency"], "peak_mbps": result["peak_mbps"],
-                          "elapsed": result["elapsed"], "window_start": result["warmup"],
-                          "cpu": result["cpu"]})
+            prev = self._state[direction]
+            self._state[direction] = {
+                **prev,
+                "live_mbps": 0.0,
+                "mbps": result["mbps"],
+                "bytes": result["bytes"],
+                "streams": 0,
+                "streams_used": result["streams"],
+                "measuring": False,
+                "done": True,
+                "latency": result["latency"],
+                "peak_mbps": result["peak_mbps"],
+                "elapsed": result["elapsed"],
+                "window_start": result["warmup"],
+                "cpu": result["cpu"],
+            }
             self._state["progress"] = self._progress(direction, 1.0)
         return result
+
+    def _transfer(self, direction, session, opts, client):
+        window, fixed, cap, initial = self._transfer_plan(session, opts)
+
+        # "window" is the length of the measurement; "window_start" is when the
+        # warm-up ended (seconds since the transfer began, None until then).
+        live_state = {"live_mbps": 0.0, "mbps": 0.0, "bytes": 0, "streams": 0,
+                      "measuring": False, "peak_mbps": 0.0, "series": [],
+                      "window": window, "window_start": None}
+        self._set(phase=direction, progress=self._progress(direction, 0.0), **{direction: live_state})
+
+        pool = TransferPool(self.cfg, session.spec(direction))
+        self._pool = pool
+        probe = latency.LoadedProbe(session.endpoint)
+        try:
+            pool.add_streams(initial)
+            probe.start()
+            outcome = self._run_transfer_loop(direction, pool, probe, window, fixed, cap, client)
+        finally:
+            pool.stop()
+            self._pool = None
+            loaded = probe.finish()
+
+        return self._finalize_transfer(direction, session, pool, loaded, *outcome)

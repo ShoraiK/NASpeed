@@ -13,7 +13,7 @@ Measure the connection your TerraMaster NAS actually gets — not the one your b
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white">
   <img alt="Zero dependencies" src="https://img.shields.io/badge/dependencies-none-2fd08a?style=flat-square">
   <img alt="6 interface languages" src="https://img.shields.io/badge/UI%20languages-6-ffb52e?style=flat-square">
-  <img alt="Version 1.0.1" src="https://img.shields.io/badge/version-1.0.1-fe7d37?style=flat-square">
+  <img alt="Version 1.1.0" src="https://img.shields.io/badge/version-1.1.0-fe7d37?style=flat-square">
   <a href="LICENSE"><img alt="License: GPL-3.0-only" src="https://img.shields.io/badge/license-GPL--3.0--only-a32d2a?style=flat-square"></a>
 </p>
 
@@ -284,7 +284,7 @@ and writes no log file. Explicit command-line options and `NASPEED_*` environmen
 | File system: `/usr/local/naspeed/data/` | Private settings and test history, directory mode `0700`, files `0600` |
 | File system: `/usr/local/naspeed/logs/` | Private service log and rotations, directory mode `0700`, files `0600` |
 | File system: `/usr/local/naspeed/run/` | Holds the proxy socket. Mode `2710` gives the socket the directory's group (`root`) independently of the service's primary group. The socket itself is `0660`. |
-| File system: `/proc/stat` and the service's cgroup `cpu.stat`, read only | Processor load during a test, to tell when the NAS rather than the line may limit the result |
+| File system: `/proc/stat` and the service's cgroup `cpu.stat` and `memory.max` / `memory.limit_in_bytes`, read only | Processor load and cgroup memory budget during a test, to cap TLS worker count and tell when the NAS rather than the line may limit the result |
 | File system: `/var/api/naspeed.sock` | A symbolic link to the socket. Privileged systemd commands prepare the private `data/`, `logs/` and `run/` directories with restricted permissions once TOS creates the `naspeed` account, ensure the TOS proxy directory exists, and create or remove this link. The application and measurement workers run as `naspeed`. |
 | User: `naspeed` (system user) | Isolated service execution — never `root` |
 | Shared folder: None | NASpeed never reads or writes your files |
@@ -321,7 +321,7 @@ Latency is sampled with plain TCP connections to the same server and port.
 | `/usr/local/naspeed/logs/naspeed.log` | Service log | Text: `[time] [level] [component] message` | On start | Rotated at 512 KiB, keeping 2 old files (`.1`, `.2`): about 1.5 MiB total | Persistent, rotated |
 | `/usr/local/naspeed/run/naspeed.sock` | Socket for the TOS platform proxy | Unix socket, mode `0660` | On start | N/A | Removed on stop; a stale one is replaced on start |
 | `/var/api/naspeed.sock` | Link the TOS proxy follows to the socket above | Symbolic link, created by root | On every service start | N/A | Removed on stop |
-| `/usr/local/naspeed/webui/` | The interface files that TOS serves at `/naspeed/` | Directory with seven static files | Unpacked from `webui.bz2` by the platform on installation, and again by the package's `postinst` on every upgrade | Fixed, about 169 KB; rewritten on upgrade | Static between upgrades; removed on uninstall |
+| `/usr/local/naspeed/webui/` | The interface files that TOS serves at `/naspeed/` | Directory with static files (HTML, CSS, JS, SVG) | Unpacked from `webui.bz2` by the platform on installation, and again by the package's `postinst` on every upgrade | Fixed, about 170 KB; rewritten on upgrade | Static between upgrades; removed on uninstall |
 
 Inside TOS the platform, not the NASpeed service, serves the interface from that `webui/` folder. The platform only
 unpacks it on a fresh installation, which is why `postinst` refreshes it on upgrades. It sends those files without
@@ -330,8 +330,7 @@ differs from the service's and reloads itself once. NASpeed creates no cache
 or files in `/tmp`, its measurement workers write no application data, and the command line keeps its results in
 memory. The service also logs to stdout, captured by the system journal under systemd. When running Python
 directly from source, Python may create ignored `__pycache__/` directories; set `PYTHONDONTWRITEBYTECODE=1` to
-disable them. The browser keeps only the theme, a copy of the language (to paint the first frame) and how many results a
-History page shows in local storage.
+disable them. The browser keeps only the theme, a copy of the language (to paint the first frame), the speed unit and how many results a History page shows in local storage.
 
 ### After uninstalling
 
@@ -346,7 +345,7 @@ To keep a copy of your results before deleting them, export them from **History*
 ## Versioning
 
 NASpeed uses plain numeric `MAJOR.MINOR.PATCH` versions, the format the TOS App Center compares to offer updates.
-The current version is **1.0.1**. Every version is described in [CHANGELOG.md](CHANGELOG.md).
+The current version is **1.1.0**. Every version is described in [CHANGELOG.md](CHANGELOG.md).
 
 - The 0.x packages used the TOS beta flag. Stable 1.x packages set that flag to `false`.
 - The version is defined once, in [`src/naspeed/__init__.py`](src/naspeed/__init__.py). It appears in Settings,

@@ -206,7 +206,11 @@ def _validate_package_sources(root: pathlib.Path = ROOT) -> tuple[str, bool, byt
     webui = root / "webui"
     if icon != (webui / "favicon.svg").read_bytes():
         raise BuildError("Keep packaging/images/icons/naspeed.svg in sync with webui/favicon.svg.")
-    required = ("index.html", "startup.js", "app.js", "i18n.js", "prefs.js", "styles.css", "favicon.svg")
+    required = (
+        "index.html", "startup.js", "format.js", "api.js", "charts.js",
+        "history.js", "settings.js", "app.js", "i18n.js", "prefs.js",
+        "styles.css", "favicon.svg",
+    )
     missing = [name for name in required if not (webui / name).is_file()]
     if missing:
         raise BuildError("Missing web UI files: %s." % ", ".join(missing))

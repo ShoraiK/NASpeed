@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import os
 import tarfile
+import threading
 import time
 import urllib.parse
 
@@ -80,9 +81,10 @@ class StaticFiles:
     def __init__(self, cfg):
         self.dev = cfg.dev
         self.directory = cfg.webui_dir
+        self.archive_path = cfg.webui_archive
         self.files = {}
-        if not self.directory:
-            self._load_archive(cfg.webui_archive)
+        self._archive_loaded = False
+        self._lock = threading.Lock()
 
     def _load_archive(self, path):
         try:
@@ -100,6 +102,11 @@ class StaticFiles:
 
     def _read(self, path):
         if not self.directory:
+            if not self._archive_loaded:
+                with self._lock:
+                    if not self._archive_loaded:
+                        self._load_archive(self.archive_path)
+                        self._archive_loaded = True
             return self.files.get(path)
         root = os.path.realpath(self.directory)
         full = os.path.realpath(os.path.join(root, path.lstrip("/")))
@@ -159,6 +166,11 @@ class App:
         if request.method == "OPTIONS":
             return self._preflight(request)
         if path == "/health":
+            if request.method not in ("GET", "HEAD"):
+                resp = Response.error(405, "method_not_allowed")
+                resp.headers["Allow"] = "GET, HEAD"
+                resp.headers["Cache-Control"] = "no-store"
+                return resp
             return Response.json({"status": "ok", "app": APP_ID, "version": __version__},
                                  headers={"Cache-Control": "no-store"})
         if path == "/api" or path.startswith("/api/"):

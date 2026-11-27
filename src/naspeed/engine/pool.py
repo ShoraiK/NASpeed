@@ -104,6 +104,9 @@ class _ProcessWorker:
             self.proc.wait(2)
         except (OSError, subprocess.TimeoutExpired):
             pass
+        self.close()
+
+    def close(self):
         if self.proc.poll() is not None:
             # Drain the final counters and any late HTTP response before the
             # parent reads the outcome of this phase.
@@ -161,6 +164,9 @@ class _ThreadWorker:
 
     def kill(self):
         self.request_stop()
+
+    def close(self):
+        pass
 
 
 class Snapshot:
@@ -235,5 +241,5 @@ class TransferPool:
         for worker in self.workers:
             if not worker.wait(deadline):
                 worker.kill()
-            elif isinstance(worker, _ProcessWorker):
-                worker.kill()  # already exited: this just reaps it and closes pipes
+            else:
+                worker.close()

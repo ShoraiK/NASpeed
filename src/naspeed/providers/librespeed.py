@@ -8,6 +8,7 @@ be used by clients; each server exposes a handful of small PHP endpoints.
 
 from __future__ import annotations
 
+import http.client
 import json
 import re
 import urllib.parse
@@ -94,7 +95,7 @@ class LibreSpeed(Provider):
         try:
             status, body = netutil.pinned_get(endpoint, path.path + "?" + path.query,
                                               {"Accept": "application/json"}, timeout=6.0, limit=65536)
-        except Exception:
+        except (OSError, ValueError, http.client.HTTPException, netutil.NetError):
             return {}
         if status != 200:
             return {}

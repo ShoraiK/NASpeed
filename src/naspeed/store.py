@@ -10,6 +10,7 @@ directory (``/usr/local/naspeed/data`` on TOS). Writes are atomic
 from __future__ import annotations
 
 import copy
+import errno
 import hashlib
 import json
 import os
@@ -54,6 +55,20 @@ class StorageError(Exception):
     """Persistent state could not be read or durably written."""
 
 
+def _fsync_dir(directory):
+    if not hasattr(os, "O_DIRECTORY"):
+        return
+    dir_fd = os.open(directory or ".", os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(dir_fd)
+    except OSError as exc:
+        ignored = (errno.EINVAL, errno.EBADF, errno.EROFS, getattr(errno, "EOPNOTSUPP", errno.EINVAL))
+        if exc.errno not in ignored:
+            raise
+    finally:
+        os.close(dir_fd)
+
+
 def _atomic_write_json(path, payload):
     tmp = "%s.tmp-%d" % (path, os.getpid())
     data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -70,6 +85,7 @@ def _atomic_write_json(path, payload):
         except OSError:
             pass
         raise
+    _fsync_dir(os.path.dirname(path) or ".")
 
 
 def _read_json(path, default):
@@ -134,11 +150,13 @@ class Store:
         self._lock = threading.RLock()
         self._settings = None
         self._history = None
+        self._revision_value = None
         self._persistent = persistent
         if not persistent:
             # In-memory only (command-line tests): never touch the disk.
             self._settings = copy.deepcopy(DEFAULT_SETTINGS)
             self._history = []
+            self._revision_value = self._revision(self._history)
             return
         try:
             os.makedirs(data_dir, exist_ok=True)
@@ -196,7 +214,7 @@ class Store:
                     try:
                         self._save(self._settings_path(), self._settings)
                     finally:
-                        self._settings = self._history = None
+                        self._settings = self._history = self._revision_value = None
                     raise
             self._settings = current
             return copy.deepcopy(current)
@@ -216,6 +234,7 @@ class Store:
                 self._commit_history(history[-limit:])
             else:
                 self._history = history
+                self._revision_value = self._revision(history)
         return self._history
 
     def list_history(self, limit=None):
@@ -230,12 +249,18 @@ class Store:
         ids = json.dumps([entry.get("id") for entry in history], separators=(",", ":"))
         return hashlib.sha256(ids.encode("ascii")).hexdigest()
 
+    def _current_revision(self):
+        history = self._load_history()
+        if self._revision_value is None:
+            self._revision_value = self._revision(history)
+        return self._revision_value
+
     def history_page(self, limit=None, ids=None, summary=False):
         with self._lock:
             settings = self.get_settings()
             history = self._load_history()
             count = len(history)
-            revision = self._revision(history)
+            revision = self._current_revision()
             if ids is not None:
                 history = [entry for entry in history if entry.get("id") in ids]
             items = history[-limit:] if limit else history
@@ -273,7 +298,7 @@ class Store:
 
     def clear_history(self, revision=None):
         with self._lock:
-            if revision is not None and revision != self._revision(self._load_history()):
+            if revision is not None and revision != self._current_revision():
                 return False
             self._commit_history([])
             return True
@@ -281,6 +306,7 @@ class Store:
     def _commit_history(self, history):
         self._save(self._history_path(), history)
         self._history = history
+        self._revision_value = self._revision(history)
 
     def _save(self, path, payload):
         if not self._persistent:

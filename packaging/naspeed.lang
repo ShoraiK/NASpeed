@@ -2,180 +2,180 @@
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "使用 Cloudflare、Ookla、LibreSpeed 或 M-Lab 测试 NAS 的网速。"
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [zh-hk]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "使用 Cloudflare、Ookla、LibreSpeed 或 M-Lab 測試 NAS 的網速。"
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [en-us]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Test the internet speed of your NAS with Cloudflare, Ookla, LibreSpeed or M-Lab."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [ko-kr]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Cloudflare, Ookla, LibreSpeed 또는 M-Lab으로 NAS의 인터넷 속도를 측정합니다."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [ja-jp]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Cloudflare、Ookla、LibreSpeed、M-Lab を使って NAS のインターネット速度を測定します。"
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [de-de]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Messen Sie die Internetgeschwindigkeit Ihres NAS mit Cloudflare, Ookla, LibreSpeed oder M-Lab."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [fr-fr]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Mesurez le débit Internet de votre NAS avec Cloudflare, Ookla, LibreSpeed ou M-Lab."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [it-it]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Misura la velocità di Internet del tuo NAS con Cloudflare, Ookla, LibreSpeed o M-Lab."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [es-es]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Mide la velocidad de Internet de tu NAS con Cloudflare, Ookla, LibreSpeed o M-Lab."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [hu-hu]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Mérje meg a NAS internetsebességét a Cloudflare, az Ookla, a LibreSpeed vagy az M-Lab segítségével."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [pl-pl]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Zmierz prędkość internetu swojego serwera NAS za pomocą Cloudflare, Ookla, LibreSpeed lub M-Lab."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [tr-tr]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "NAS'ınızın internet hızını Cloudflare, Ookla, LibreSpeed veya M-Lab ile ölçün."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [ru-ru]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Измеряйте скорость интернета на своём NAS с помощью Cloudflare, Ookla, LibreSpeed или M-Lab."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [pt-pt]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Meça a velocidade da Internet do seu NAS com Cloudflare, Ookla, LibreSpeed ou M-Lab."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [cs-cz]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Změřte rychlost internetu svého NAS pomocí Cloudflare, Ookla, LibreSpeed nebo M-Lab."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [da-dk]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Mål internethastigheden på din NAS med Cloudflare, Ookla, LibreSpeed eller M-Lab."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [nl-nl]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Meet de internetsnelheid van je NAS met Cloudflare, Ookla, LibreSpeed of M-Lab."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [nb-no]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Mål internetthastigheten til NAS-en din med Cloudflare, Ookla, LibreSpeed eller M-Lab."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [sv-se]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Mät internethastigheten på din NAS med Cloudflare, Ookla, LibreSpeed eller M-Lab."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [el-gr]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Μετρήστε την ταχύτητα του Internet στο NAS σας με Cloudflare, Ookla, LibreSpeed ή M-Lab."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [ro-ro]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Măsurați viteza internetului pe NAS-ul dvs. cu Cloudflare, Ookla, LibreSpeed sau M-Lab."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [th-th]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "วัดความเร็วอินเทอร์เน็ตของ NAS ด้วย Cloudflare, Ookla, LibreSpeed หรือ M-Lab"
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [vi-vn]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Đo tốc độ Internet của NAS bằng Cloudflare, Ookla, LibreSpeed hoặc M-Lab."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [id-id]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "Ukur kecepatan internet NAS Anda dengan Cloudflare, Ookla, LibreSpeed, atau M-Lab."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [ar-sa]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "قم بقياس سرعة الإنترنت في جهاز NAS باستخدام Cloudflare أو Ookla أو LibreSpeed أو M-Lab."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""
 
 [he-il]
 name = "NASpeed"
 auth = "ShoraiK"
 descript = "מדדו את מהירות האינטרנט של ה-NAS שלכם באמצעות Cloudflare, Ookla, LibreSpeed או M-Lab."
-release_note = "Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready."
+release_note = "Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits."
 important = ""

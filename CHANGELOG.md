@@ -4,6 +4,16 @@ Notable changes in each NASpeed version, newest first. Every 0.x version is a be
 
 Each section opens with a one-line summary that the package build copies into the App Center release note, so keep that line plain text and no longer than 300 characters. The release workflow adds the whole section to the GitHub release notes, which turn every line break into a visible one, so write each paragraph and bullet on a single line.
 
+## 1.1.0
+
+Major UX, performance and hardening release: modular web interface, live phase progress and copyable summaries, automatic Gbps units, hardened HTTP server with bounded concurrency, durable directory fsync and cgroup-aware TLS worker limits.
+
+- Modularized the web interface into focused static modules (`format.js`, `api.js`, `charts.js`, `history.js`, `settings.js`, `app.js`) with modern ES6 syntax, unified dark-theme detection, cached chart bounds without forced reflows, lazy history thumbnails via `IntersectionObserver`, cached provider medians and selective settings updates.
+- Added live progress percentage, estimated time remaining and active-phase highlights on the Test board, copy-summary buttons in both the status tile and history rows, a *Back to latest* control with compact stacking when pinned, automatic `Mbps`/`Gbps` unit switching and measured-byte columns in CSV exports.
+- Improved History and Settings UX: hidden chart cursor when nothing is selected, selected-bar context with a *Show medians* reset, clickable provider-median filtering with a *Clear filter* chip, clean Export/Download CSV button swap, confirmation before trimming history when lowering the limit, and server-picker reload/retry controls.
+- Hardened the built-in HTTP server (`httpd.py`) with bounded worker concurrency (`503` when saturated), strict `Content-Length` and chunked transfer limits, exact body reads and JSON `405` responses; added POSIX parent-directory `fsync` on atomic writes, excluded WebSocket control/text frames from NDT7 download byte counts with clean Close payload draining, and capped TLS worker processes against Linux cgroup memory limits.
+- Expanded offline test coverage and CI checks across Python and Node.js, including 6-language i18n key and placeholder parity, static DOM ID validation and Debian maintainer script syntax checks.
+
 ## 1.0.1
 
 Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready.

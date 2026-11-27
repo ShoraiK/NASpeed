@@ -276,6 +276,12 @@ class PackageBuildTests(unittest.TestCase):
             if name in ("preinst", "postinst"):
                 self.assertIsNone(re.search(r"\bchown\b|-o\s+naspeed\b", body), msg=name)
 
+    @unittest.skipUnless(os.name == "posix" and shutil.which("bash"), "POSIX bash required")
+    def test_maintainer_scripts_pass_bash_syntax_check(self):
+        scripts = [str(ROOT / "packaging" / "DEBIAN" / name) for name in build.SCRIPT_NAMES]
+        result = subprocess.run(["bash", "-n", *scripts], check=False, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+
     @unittest.skipUnless(os.name == "posix" and shutil.which("sh"), "POSIX sh required")
     def test_service_exec_start_pre_prepares_private_dirs_and_refuses_symlinks(self):
         service_lines = (ROOT / "packaging" / "init.d" / "naspeed.service").read_text(encoding="utf-8").splitlines()

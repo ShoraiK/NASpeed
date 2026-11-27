@@ -3,8 +3,10 @@
 """Exercise the measurement engine against a local, rate-limited HTTP peer."""
 
 import http.server
+import json
 import os
 import socket
+import struct
 import sys
 import threading
 import time
@@ -136,6 +138,58 @@ class MeasurementTests(unittest.TestCase):
                 self.assertIn("HTTP 403", state["error"]["detail"])
                 self.assertEqual(history, [])
                 self.assertEqual(len(self.peer.posts), 1 if path == "/reject-all" else 2)
+
+    def test_ndt7_download_counts_only_data_frames(self):
+        def ws_frame(opcode, payload):
+            n = len(payload)
+            if n < 126:
+                head = bytes([0x80 | opcode, n])
+            elif n < 65536:
+                head = bytes([0x80 | opcode, 126]) + struct.pack("!H", n)
+            else:
+                head = bytes([0x80 | opcode, 127]) + struct.pack("!Q", n)
+            return head + payload
+
+        client_sock, peer_sock = socket.socketpair()
+        try:
+            info_msg = json.dumps({
+                "ConnectionInfo": {"Client": "203.0.113.9:5555"},
+                "TCPInfo": {"MinRTT": 12345},
+            }).encode("utf-8")
+            wire = (
+                ws_frame(0x2, b"x" * 4096)
+                + ws_frame(0x1, info_msg)
+                + ws_frame(0x9, b"ping")
+                + ws_frame(0x8, b"\x03\xe8done")
+            )
+            peer_sock.sendall(wire)
+            peer_sock.shutdown(socket.SHUT_WR)
+            ctr = transfer.Counters(1)
+            stop = threading.Event()
+            endpoint = netutil.Endpoint("wss", "example.invalid", 443, "127.0.0.1", socket.AF_INET)
+            with mock.patch("naspeed.engine.transfer._ws_connect", return_value=(client_sock, b"")):
+                transfer._ndt7_download({"path": "/ndt/v7/download"}, endpoint, 0, ctr, stop)
+            peer_sock.settimeout(2.0)
+            reply = bytearray()
+            while True:
+                chunk = peer_sock.recv(1024)
+                if not chunk:
+                    break
+                reply += chunk
+        finally:
+            for sock in (client_sock, peer_sock):
+                try:
+                    sock.close()
+                except OSError:
+                    pass
+        self.assertEqual(ctr.total(), 4096)
+        self.assertEqual(ctr.info["client_ip"], "203.0.113.9")
+        self.assertEqual(ctr.info["min_rtt_ms"], 12.345)
+        self.assertEqual(len(reply), 10)
+        self.assertEqual(reply[0] & 0x0F, 0xA)
+        length = reply[1] & 0x7F
+        self.assertEqual(length, 4)
+        self.assertEqual(transfer._ws_mask(reply[6:10], reply[2:6]), b"ping")
 
 
 class ProviderCacheTests(unittest.TestCase):

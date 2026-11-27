@@ -56,5 +56,8 @@ jobs:
             node --check "$file"
           done
 
+      - name: Check Debian maintainer script syntax
+        run: bash -n packaging/DEBIAN/preinst packaging/DEBIAN/postinst packaging/DEBIAN/prerm packaging/DEBIAN/postrm
+
       - name: Validate the package sources
         run: python tools/build.py --validate-only

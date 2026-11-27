@@ -51,28 +51,6 @@
   --scrim: rgba(14, 20, 16, 0.55);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --page: #070908;
-    --tile: #131714;
-    --tile-2: #1d231f;
-    --tile-3: #29312c;
-    --ink: #ecf1eb;
-    --ink-hover: #d2dad1;
-    --ink-2: #afb9b1;
-    --ink-3: #8a958d;
-    --paper: #0b0f0c;
-    --paper-2: #49534c;
-    --ink-bar: #9aa59d;
-    --bar-down: var(--green);
-    --bar-up: var(--amber);
-    --alert: #ff8170;
-    --on-alert: #1a0603;
-    --scrim: rgba(0, 0, 0, 0.66);
-  }
-}
-
 :root[data-theme="dark"] {
   color-scheme: dark;
   --page: #070908;
@@ -107,9 +85,13 @@ html {
 }
 
 /* Inside TOS the window controls float over the top 40 px of the page (and
-   their drag strip swallows clicks there). That strip stays empty. */
+   their drag strip swallows clicks there). That strip stays empty. The page
+   scrolls inside the body, which starts below the strip, so the scrollbar
+   never runs under the window controls. */
 html.embedded {
   --tos-bar: 40px;
+  height: 100%;
+  overflow: hidden;
 }
 
 html.embedded body::before {
@@ -124,13 +106,6 @@ html.embedded body::before {
 html.embedded .dlg {
   inset-block-start: var(--tos-bar);
   max-height: min(600px, calc(100vh - var(--tos-bar) - 32px));
-}
-
-/* There the page scrolls inside the body, which starts below the strip, so
-   the scrollbar never runs under the window controls. */
-html.embedded {
-  height: 100%;
-  overflow: hidden;
 }
 
 html.embedded body {
@@ -240,7 +215,7 @@ a {
 .sr {
   position: absolute;
   width: 1px;
-  height: 1px; /* taste-skill-ignore: text kept only for screen readers, not a rule */
+  height: 1px; /* Text kept only for screen readers. */
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
@@ -687,6 +662,14 @@ main {
   color: var(--on);
 }
 
+.t-figure[data-active="true"] {
+  box-shadow: inset 0 0 0 3px var(--ink);
+}
+
+.t-figure[data-lit="true"][data-active="true"] {
+  box-shadow: inset 0 0 0 3px var(--on);
+}
+
 .t-figure .tile-body {
   flex: none;
 }
@@ -779,12 +762,38 @@ main {
   grid-area: status;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-right: var(--pad);
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .t-status .tile-body {
-  width: 100%;
-  padding: 0 var(--pad);
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 0 0 var(--pad);
+}
+
+.status-actions {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.status-actions[data-multi="true"] {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.status-actions[data-multi="true"] .btn {
+  height: 30px;
+  padding: 0 12px;
+  font-size: var(--fs-small);
+  text-align: center;
 }
 
 .t-status .statement {
@@ -945,7 +954,7 @@ main {
 /* ---- History ------------------------------------------------------------ */
 
 .h-fig {
-  height: 192px;
+  min-height: 192px;
 }
 
 .h-fig.h-swap .figure,
@@ -958,13 +967,6 @@ main {
     opacity: 0.25;
     transform: translateY(0.3rem);
     filter: blur(3px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .h-fig.h-swap .figure,
-  .h-fig.h-swap .caption {
-    animation: none;
   }
 }
 
@@ -985,7 +987,7 @@ main {
 
 .h-head {
   grid-column: span 4;
-  height: 192px;
+  min-height: 192px;
   padding: var(--pad);
   display: flex;
   flex-direction: column;
@@ -999,8 +1001,20 @@ main {
   gap: 6px;
 }
 
-.h-actions .field {
+.h-filter-row {
   flex: 1 1 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.h-filter-row .field {
+  flex: 1 1 auto;
+}
+
+.h-filter-clear {
+  flex: none;
+  white-space: nowrap;
 }
 
 .h-actions .btn {
@@ -1046,16 +1060,36 @@ main {
   cursor: pointer;
 }
 
-.sk-hit:hover {
-  fill: var(--tile-3);
+.sk-hit.sk-focus {
+  fill: var(--tile-2);
 }
 
 .sk-hit.sk-selected {
   fill: var(--tile-3);
 }
 
-.h-chart .note {
+.h-chart-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   padding: 10px var(--pad) 14px;
+}
+
+.h-chart-foot .note {
+  min-width: 0;
+}
+
+.h-chart-foot .note[data-picked="true"] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.h-chart-reset {
+  flex: none;
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: var(--fs-small);
 }
 
 .h-chart-step {
@@ -1104,6 +1138,23 @@ td {
 
 .num {
   text-align: right;
+}
+
+.prov-filter {
+  font-weight: 500;
+}
+
+.prov-filter:hover {
+  text-decoration: underline;
+}
+
+.h-table tr[data-active="true"] td {
+  background: var(--tile-2);
+  font-weight: 600;
+}
+
+.h-table tr[data-active="true"] .prov-filter {
+  font-weight: 700;
 }
 
 .h-list {
@@ -1232,13 +1283,6 @@ td {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .bar.row-in,
-  .h-list[data-leaving] .bar {
-    animation: none;
-  }
-}
-
 /* The pager under the History list (see renderPager). */
 .h-pager {
   grid-column: 1 / -1;
@@ -1284,7 +1328,7 @@ td {
   color: var(--paper);
 }
 
-.pg[aria-disabled="true"] {
+.pg:disabled {
   background: var(--tile-2);
   color: var(--ink-3);
   cursor: default;
@@ -1386,12 +1430,6 @@ td {
   align-self: flex-start;
 }
 
-.s-tile > .note + .seg,
-.s-tile > .note + .field,
-.s-tile > .note + .switch-row {
-  padding-top: 0;
-}
-
 .s-wide {
   grid-column: span 8;
 }
@@ -1408,10 +1446,6 @@ td {
 .provider-privacy dt {
   margin-top: 1em;
   font-weight: 600;
-}
-
-.provider-privacy dd {
-  margin: 0;
 }
 
 .provider-privacy code {
@@ -1438,7 +1472,6 @@ td {
 }
 
 .s-prov dd {
-  margin: 0;
   max-width: 60ch;
 }
 
@@ -1459,7 +1492,7 @@ td {
   border-radius: var(--r);
   background: var(--tile);
   color: var(--ink);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35); /* taste-skill-ignore: a dialog really floats */
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
   overflow: hidden;
 }
 
@@ -1482,6 +1515,13 @@ td {
   justify-content: space-between;
   gap: 12px;
   padding: 16px 16px 12px var(--pad);
+}
+
+.dlg-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
 }
 
 .dlg > .field {
@@ -1544,8 +1584,26 @@ td {
   white-space: nowrap;
 }
 
+.rows-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 6px 4px;
+}
+
 .rows-note {
   padding: 8px 6px 4px;
+}
+
+.rows-note[data-loading="true"] {
+  animation: loading-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes loading-pulse {
+  50% {
+    opacity: 0.45;
+  }
 }
 
 .dlg-body {
@@ -1638,6 +1696,14 @@ td {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
   }
+
+  .h-fig.h-swap .figure,
+  .h-fig.h-swap .caption,
+  .bar.row-in,
+  .h-list[data-leaving] .bar,
+  .rows-note[data-loading="true"] {
+    animation: none;
+  }
 }
 
 /* ---- Narrower windows ---------------------------------------------------- */
@@ -1674,6 +1740,17 @@ td {
 
   .t-status {
     min-height: 92px;
+  }
+
+  .status-actions[data-multi="true"] {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .status-actions[data-multi="true"] .btn {
+    height: 40px;
+    padding: 0 16px;
+    font-size: inherit;
   }
 
   .t-down,
@@ -1810,7 +1887,13 @@ td {
   }
 
   .t-status {
-    padding: 16px 0;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 16px var(--pad);
+  }
+
+  .t-status .tile-body {
+    padding: 0;
   }
 
   .t-status .statement {
@@ -1884,7 +1967,7 @@ td {
   }
 
   .h-fig {
-    height: 150px;
+    min-height: 150px;
   }
 
   .h-list-head {
@@ -1919,6 +2002,11 @@ td {
     content: "\2191\00a0";
   }
 
+  .bar-down:not([data-has-unit="true"])::after,
+  .bar-up:not([data-has-unit="true"])::after {
+    content: "\00a0" attr(data-unit);
+  }
+
   .bar-ping::after {
     content: "\00a0ms";
   }
@@ -1926,5 +2014,26 @@ td {
   .bar-panel {
     grid-template-columns: minmax(0, 1fr);
     padding: 6px 16px 16px;
+  }
+}
+
+@media (max-width: 680px) and (min-height: 640px) {
+  html,
+  html.embedded body {
+    scroll-padding-top: calc(124px + 2 * var(--gap));
+  }
+
+  .top {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+
+  .top::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: calc(-1 * var(--gap)) 0;
+    background: var(--page);
   }
 }

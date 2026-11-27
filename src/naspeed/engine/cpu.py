@@ -53,31 +53,70 @@ def _read_cpus(path):
     return cpus
 
 
-def _cgroup_stat_files(proc_cgroup=PROC_CGROUP, root=CGROUP_ROOT):
-    """The cpu.stat files of this process's cgroup: cgroup v2 first, then v1."""
+_UNBOUNDED_MEMORY = 1 << 60
+
+
+def _cgroup_targets(proc_cgroup, controller):
+    """Yield ``(mounts, relpath, is_v2)`` tuples from ``proc_cgroup`` for ``controller``."""
     try:
         with open(proc_cgroup, encoding="utf-8") as handle:
             lines = handle.read().splitlines()
     except OSError:
-        return []
-    found = []
+        return
     for line in lines:
         parts = line.split(":", 2)
         if len(parts) != 3 or parts[2] in ("", "/"):
             continue  # the root cgroup would count the whole system
         controllers = [name for name in parts[1].split(",") if name]
         if parts[0] == "0" and not controllers:
-            mounts = ["", "unified"]
-        elif "cpu" in controllers:
-            mounts = [parts[1]] + controllers
-        else:
-            continue
+            yield ("", "unified"), parts[2], True
+        elif controller in controllers:
+            yield [parts[1]] + controllers, parts[2], False
+
+
+def _cgroup_stat_files(proc_cgroup=PROC_CGROUP, root=CGROUP_ROOT):
+    """The cpu.stat files of this process's cgroup: cgroup v2 first, then v1."""
+    found = []
+    for mounts, relpath, _is_v2 in _cgroup_targets(proc_cgroup, "cpu"):
         for mount in mounts:
-            path = os.path.join(root, mount, parts[2].lstrip("/"), "cpu.stat")
+            path = os.path.join(root, mount, relpath.lstrip("/"), "cpu.stat")
             if os.path.isfile(path):
                 found.append(path)
                 break
     return found
+
+
+def _read_memory_limit(path):
+    try:
+        with open(path, encoding="ascii") as handle:
+            raw = handle.read().strip()
+    except OSError:
+        return None
+    if not raw.isdigit():
+        return None
+    value = int(raw)
+    return value if 0 < value < _UNBOUNDED_MEMORY else None
+
+
+def memory_limit_bytes(proc_cgroup=PROC_CGROUP, root=CGROUP_ROOT):
+    """Smallest finite cgroup memory limit for this service, or None."""
+    limits = []
+    for mounts, relpath, is_v2 in _cgroup_targets(proc_cgroup, "memory"):
+        filename = "memory.max" if is_v2 else "memory.limit_in_bytes"
+        parts = [part for part in relpath.split("/") if part]
+        for mount in mounts:
+            mount_root = os.path.join(root, mount) if mount else root
+            found_mount = False
+            for depth in range(len(parts), 0, -1):
+                candidate = os.path.join(mount_root, *parts[:depth], filename)
+                if os.path.isfile(candidate):
+                    found_mount = True
+                    value = _read_memory_limit(candidate)
+                    if value is not None:
+                        limits.append(value)
+            if found_mount:
+                break
+    return min(limits) if limits else None
 
 
 def _read_cgroup(files):

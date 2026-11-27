@@ -10,6 +10,7 @@ if Ookla changes its service.
 
 from __future__ import annotations
 
+import http.client
 import urllib.parse
 import xml.etree.ElementTree as ElementTree
 from collections import OrderedDict
@@ -126,7 +127,7 @@ class Ookla(Provider):
         """True when ``endpoint`` answers like an Ookla server."""
         try:
             status, body = netutil.pinned_get(endpoint, "/hello?nocache=1", timeout=5.0, limit=256)
-        except Exception:
+        except (OSError, ValueError, http.client.HTTPException, netutil.NetError):
             return False
         return status == 200 and body.lower().startswith(b"hello")
 
