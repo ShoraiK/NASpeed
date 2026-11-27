@@ -12,9 +12,14 @@ Type=simple
 User=naspeed
 WorkingDirectory=/usr/local/naspeed
 UMask=0077
+# Prepare private runtime directories inside WorkingDirectory (mapped by TOS
+# onto the chosen storage volume) once the platform has created the naspeed
+# account. Refuse symlinks before tightening ownership and modes; run/ uses
+# setgid root so the socket does not inherit allusers.
+ExecStartPre=+/bin/sh -ec 'for d in data logs run; do [ ! -L "$d" ] || exit 1; done; mkdir -p data logs run && chown naspeed:root data logs run && chmod 0700 data logs && chmod 2710 run'
 # Tighten files kept from earlier releases as the service user. New log files,
 # including rotated logs, inherit the private umask.
-ExecStartPre=/usr/bin/find /usr/local/naspeed/data /usr/local/naspeed/logs -maxdepth 1 -type f -links 1 ! -perm 0600 -exec /bin/chmod 0600 -- {} +
+ExecStartPre=-/usr/bin/find /usr/local/naspeed/data /usr/local/naspeed/logs -maxdepth 1 -type f -links 1 ! -perm 0600 -exec /bin/chmod 0600 -- {} +
 ExecStartPre=+/bin/mkdir -p -m 0755 /var/api
 ExecStartPre=+/bin/ln -sfnT /usr/local/naspeed/run/naspeed.sock /var/api/naspeed.sock
 ExecStart=/usr/local/naspeed/bin/naspeed

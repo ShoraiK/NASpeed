@@ -4,6 +4,14 @@ Notable changes in each NASpeed version, newest first. Every 0.x version is a be
 
 Each section opens with a one-line summary that the package build copies into the App Center release note, so keep that line plain text and no longer than 300 characters. The release workflow adds the whole section to the GitHub release notes, which turn every line break into a visible one, so write each paragraph and bullet on a single line.
 
+## 1.0.1
+
+Fixed clean installation on TOS 7 by removing private directory creation and ownership changes from the package post-install script, and moved that setup into the systemd service start-up once the storage volume and naspeed account are ready.
+
+- Removed `install -d -o naspeed` for `data/`, `logs/` and `run/` from `DEBIAN/postinst`, which failed clean installations before TOS creates the `naspeed` user and triggered the App Center S13 static check.
+- Moved creation and hardening of `data/` (`0700`), `logs/` (`0700`) and `run/` (`2710`, group `root`) with symlink checks into `naspeed.service`'s start-up preparation, followed by a non-fatal permission check on existing files.
+- Hardened `DEBIAN/prerm` so upgrades do not disable the unit prematurely and `dpkg-query` errors cannot abort removal.
+
 ## 1.0.0
 
 NASpeed now discloses provider connections, asks before looking up M-Lab servers, restricts access to private files and removes temporary data and logs on uninstall. The TOS configuration checkbox controls whether settings and history are kept.

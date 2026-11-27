@@ -8,6 +8,7 @@ import io
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -229,7 +230,6 @@ class PackageBuildTests(unittest.TestCase):
             def run_postinst(app_dir):
                 patched = temp / "postinst"
                 local_script = script.replace("/usr/local/naspeed", str(app_dir))
-                local_script = local_script.replace("-o naspeed -g root", f"-o {os.getuid()} -g {os.getgid()}")
                 patched.write_text(local_script, encoding="utf-8")
                 return subprocess.run(["bash", str(patched), "configure"], env=env,
                                       capture_output=True, text=True, check=False)
@@ -247,15 +247,14 @@ class PackageBuildTests(unittest.TestCase):
                 shipped = sorted(webui.getnames())
             self.assertEqual(sorted(path.name for path in (upgrade / "webui").iterdir()), shipped)
             self.assertEqual(sorted(path.name for path in upgrade.iterdir()),
-                             ["data", "logs", "run", "webui", "webui.bz2"])
-            for name, mode in (("data", 0o700), ("logs", 0o700), ("run", 0o2710)):
-                self.assertEqual((upgrade / name).stat().st_mode & 0o7777, mode)
+                             ["webui", "webui.bz2"])
 
             fresh = temp / "fresh"
             fresh.mkdir()
             (fresh / "webui.bz2").write_bytes(archive)
             self.assertEqual(run_postinst(fresh).returncode, 0)
             self.assertFalse((fresh / "webui").exists())
+            self.assertEqual(sorted(path.name for path in fresh.iterdir()), ["webui.bz2"])
 
             broken = temp / "broken"
             (broken / "webui").mkdir(parents=True)
@@ -267,7 +266,39 @@ class PackageBuildTests(unittest.TestCase):
                              ["app.js", "index.html"])
             self.assertEqual((broken / "webui" / "index.html").read_bytes(), b"old")
             self.assertEqual(sorted(path.name for path in broken.iterdir()),
-                             ["data", "logs", "run", "webui", "webui.bz2"])
+                             ["webui", "webui.bz2"])
+
+    def test_maintainer_scripts_do_not_create_data_dirs_or_require_service_user(self):
+        for name in build.SCRIPT_NAMES:
+            lines = (ROOT / "packaging" / "DEBIAN" / name).read_text(encoding="utf-8").splitlines()
+            body = "\n".join(line for line in lines if not line.lstrip().startswith("#"))
+            self.assertIsNone(re.search(r"\b(?:install\s+-d|mkdir)\b", body), msg=name)
+            if name in ("preinst", "postinst"):
+                self.assertIsNone(re.search(r"\bchown\b|-o\s+naspeed\b", body), msg=name)
+
+    @unittest.skipUnless(os.name == "posix" and shutil.which("sh"), "POSIX sh required")
+    def test_service_exec_start_pre_prepares_private_dirs_and_refuses_symlinks(self):
+        service_lines = (ROOT / "packaging" / "init.d" / "naspeed.service").read_text(encoding="utf-8").splitlines()
+        prefix = "ExecStartPre=+/bin/sh -ec '"
+        prep_line = next(line for line in service_lines if line.startswith(prefix))
+        command = prep_line[len(prefix):-1].replace("naspeed:root", f"{os.getuid()}:{os.getgid()}")
+        with tempfile.TemporaryDirectory() as temp:
+            base = pathlib.Path(temp)
+            app_dir = base / "app"
+            app_dir.mkdir()
+            result = subprocess.run(["sh", "-ec", command], cwd=app_dir, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            for name, mode in (("data", 0o700), ("logs", 0o700), ("run", 0o2710)):
+                self.assertEqual((app_dir / name).stat().st_mode & 0o7777, mode)
+
+            outside = base / "outside"
+            outside.mkdir()
+            outside.chmod(0o755)
+            shutil.rmtree(app_dir / "data")
+            (app_dir / "data").symlink_to(outside)
+            result = subprocess.run(["sh", "-ec", command], cwd=app_dir, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(outside.stat().st_mode & 0o7777, 0o755)
 
     @unittest.skipUnless(os.name == "posix" and shutil.which("bash"), "Debian package lifecycle")
     def test_uninstall_cleans_its_volume_and_honours_retention(self):

@@ -214,6 +214,15 @@ def _validate_package_sources(root: pathlib.Path = ROOT) -> tuple[str, bool, byt
         path = root / "packaging" / "DEBIAN" / name
         if not path.is_file() or not path.read_bytes().startswith(b"#!/bin/bash\n"):
             raise BuildError("Missing or invalid lifecycle script: %s." % path)
+        if name in ("preinst", "postinst"):
+            body = "\n".join(
+                line for line in path.read_text(encoding="utf-8").splitlines()
+                if not line.lstrip().startswith("#")
+            )
+            if re.search(r"\b(?:install\s+-d|mkdir|chown)\b|-o\s+naspeed\b", body):
+                raise BuildError(
+                    "Maintainer script %s must not create runtime directories or require the service user." % name
+                )
     service = root / "packaging" / "init.d" / "naspeed.service"
     service_text = service.read_text(encoding="utf-8")
     for directive in (
@@ -229,11 +238,14 @@ def _validate_package_sources(root: pathlib.Path = ROOT) -> tuple[str, bool, byt
             raise BuildError("Systemd unit is missing required directive: %s." % directive)
     privileged = [line for line in service_text.splitlines() if re.match(r"^Exec\w*=\+", line)]
     if privileged != [
+        "ExecStartPre=+/bin/sh -ec 'for d in data logs run; do [ ! -L \"$d\" ] || exit 1; done; mkdir -p data logs run && chown naspeed:root data logs run && chmod 0700 data logs && chmod 2710 run'",
         "ExecStartPre=+/bin/mkdir -p -m 0755 /var/api",
         "ExecStartPre=+/bin/ln -sfnT /usr/local/naspeed/run/naspeed.sock /var/api/naspeed.sock",
         "ExecStopPost=+/bin/rm -f /var/api/naspeed.sock",
     ]:
-        raise BuildError("Privileged service commands must be limited to the TOS proxy socket path.")
+        raise BuildError(
+            "Privileged service commands must be limited to preparing private directories and the TOS proxy socket path."
+        )
     if re.search(r"^Restart(?:Sec)?\s*=", service_text, re.M):
         raise BuildError("Do not set Restart or RestartSec; TOS manages service restarts.")
     _release_note(root, version)

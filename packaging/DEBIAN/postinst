@@ -6,19 +6,6 @@ set -e
 APP_DIR="/usr/local/naspeed"
 WEBUI_DIR="${APP_DIR}/webui"
 
-if [[ ${1:-} == configure ]]; then
-    for dir in data logs run; do
-        if [[ -L "${APP_DIR}/${dir}" ]]; then
-            echo "NASpeed: refusing a symbolic link for the private ${dir} directory" >&2
-            exit 1
-        fi
-    done
-    install -d -o naspeed -g root -m 0700 "${APP_DIR}/data" "${APP_DIR}/logs"
-    # TOS can assign naspeed to allusers. Inherit the private socket group
-    # from run/ without granting the service membership of that group.
-    install -d -o naspeed -g root -m 2710 "${APP_DIR}/run"
-fi
-
 # The platform only unpacks webui.bz2 on a fresh install, so an upgrade would
 # keep serving the previous interface. Refresh it when the folder already exists
 # (on a fresh install the platform creates it, so it is left alone). The archive
